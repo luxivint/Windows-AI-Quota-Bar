@@ -112,13 +112,14 @@ Missing one? [Open a provider request](https://github.com/valuex-creative/Window
 
 ### Download (recommended)
 
-1. Download `WindowsAIQuotaBar-win-x64.zip` from the [latest release](https://github.com/valuex-creative/Windows-AI-Quota-Bar/releases/latest).
-2. Extract it to a folder, for example `%LOCALAPPDATA%\Programs\QuotaBar`.
-3. Run `QuotaBar.exe`.
+1. Download **[WindowsAIQuotaBar-Setup-0.1.0.exe](https://github.com/valuex-creative/Windows-AI-Quota-Bar/releases/latest)** from the latest release.
+2. Double-click it. It installs for your user only, so you do not need admin rights.
 
-The release is self-contained, so you do not need to install .NET. It starts with Windows; you can turn that off in Settings.
+That's it. The app appears next to the clock and starts with Windows (you can turn that off in Settings). Uninstall it from **Settings → Apps** like any other app.
 
-> Windows SmartScreen may warn you because the app is not code-signed yet. Click **More info**, then **Run anyway**.
+> Windows SmartScreen may warn you because the installer is not code-signed yet. Click **More info**, then **Run anyway**.
+
+<sub>Prefer no installer? Download the `portable.zip` from the same release, extract it anywhere and run `QuotaBar.exe`.</sub>
 
 ### Build from source
 
@@ -129,7 +130,7 @@ dotnet publish src/QuotaBar.App -c Release -o "$env:LOCALAPPDATA\Programs\QuotaB
 & "$env:LOCALAPPDATA\Programs\QuotaBar\QuotaBar.exe"
 ```
 
-Building needs the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
+Building needs the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0). `.\build-release.ps1` builds the installer and the portable zip; it also needs [Inno Setup 6](https://jrsoftware.org/isinfo.php).
 
 ### Try it without any account
 
