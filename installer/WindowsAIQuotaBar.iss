@@ -3,7 +3,7 @@
 
 #define AppName "Windows AI Quota Bar"
 #ifndef AppVersion
-  #define AppVersion "0.1.3"
+  #define AppVersion "0.1.4"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\artifacts\WindowsAIQuotaBar"
@@ -67,6 +67,7 @@ Filename: "{app}\QuotaBar.exe"; Parameters: "--background --updated"; Flags: now
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/IM QuotaBar.exe /F"; Flags: runhidden; RunOnceId: "KillApp"
+Filename: "{sys}\taskkill.exe"; Parameters: "/IM qb.exe /F"; Flags: runhidden; RunOnceId: "KillCli"
 
 [Registry]
 ; The app registers itself to start with Windows; remove that on uninstall.
@@ -77,8 +78,11 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   Code: Integer;
 begin
-  // Close a running copy so its files can be replaced (upgrade in place).
+  // Close running copies so their files can be replaced (upgrade in place). qb.exe also runs as the
+  // MCP server of AI assistants; it has no window, so Restart Manager cannot close it and a silent
+  // update would abort. The assistant starts it again on its next request.
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM QuotaBar.exe /F', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM qb.exe /F', '', SW_HIDE, ewWaitUntilTerminated, Code);
   Sleep(500);
   Result := '';
 end;
