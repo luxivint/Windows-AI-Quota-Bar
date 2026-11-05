@@ -1,0 +1,124 @@
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
+
+namespace QuotaBar.App;
+
+public static class Metrics
+{
+    public sealed record Metric(string Id, ProviderSnapshot Provider, UsageWindow Window)
+    {
+        public string Title => $"{Visuals.ShortName(Provider)} · {Window.Label}";
+    }
+
+    /// <summary>"providerId|windowKey". providerId "antigravity" means "whichever account is active".</summary>
+    public static Metric? Resolve(UsageReport? r, string id)
+    {
+        if (r is null) return null;
+        var parts = id.Split('|');
+        if (parts.Length != 2) return null;
+        var p = r.Providers.FirstOrDefault(x => x.Id == parts[0])
+             ?? r.Providers.FirstOrDefault(x => x.ProviderKind == parts[0] && x.IsActiveAccount && x.Status == ProviderStatus.Ok);
+        var w = p?.Windows.FirstOrDefault(x => x.Key == parts[1]);
+        return p is null || w is null ? null : new Metric(id, p, w);
+    }
+
+    public static IEnumerable<Metric> All(UsageReport? r)
+    {
+        if (r is null) yield break;
+        foreach (var p in r.Providers.Where(p => p.Status == ProviderStatus.Ok))
+            foreach (var w in p.Windows)
+            {
+                var pid = p.ProviderKind == "antigravity" && p.IsActiveAccount ? "antigravity" : p.Id;
+                yield return new Metric($"{pid}|{w.Key}", p, w);
+            }
+    }
+
+    /// <summary>Configured widget metrics, falling back to the first sensible ones.</summary>
+    public static List<Metric> ForWidget(UsageReport? r, AppSettings s)
+    {
+        var list = s.WidgetMetrics.Select(id => Resolve(r, id)).OfType<Metric>().Take(2).ToList();
+        if (list.Count == 0) list = All(r).GroupBy(m => m.Provider.Id).Select(g => g.First()).Take(2).ToList();
+        return list;
+    }
+}
+
+public sealed class TrayIcon : IDisposable
+{
+    readonly NotifyIcon _icon;
+    IntPtr _lastHicon;
+
+    public TrayIcon()
+    {
+        _icon = new NotifyIcon { Visible = true, Text = "Windows AI Quota Bar" };
+        _icon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) App.Instance.TogglePanel(); };
+        var menu = new ContextMenuStrip();
+        menu.Items.Add("Open Windows AI Quota Bar", null, (_, _) => App.Instance.ShowPanel());
+        menu.Items.Add("Refresh now", null, (_, _) => _ = App.Instance.RefreshAsync());
+        menu.Items.Add("Settings", null, (_, _) => App.Instance.ShowPanel("settings"));
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("Quit", null, (_, _) => App.Instance.Quit());
+        _icon.ContextMenuStrip = menu;
+        App.Instance.ReportChanged += Update;
+        Theme.Changed += Update;
+        Update();
+    }
+
+    void Update()
+    {
+        var app = App.Instance;
+        var metrics = Metrics.ForWidget(app.Report, app.Settings);
+        var tip = metrics.Count == 0 ? "Windows AI Quota Bar" : "Windows AI Quota Bar\n" + string.Join("\n", metrics.Select(m => $"{m.Title}: {m.Window.LeftPercent:0}% left"));
+        _icon.Text = tip.Length > 127 ? tip[..127] : tip;
+
+        using var bmp = Render(metrics.Select(m => m.Window.LeftPercent).ToList());
+        var h = bmp.GetHicon();
+        _icon.Icon = Icon.FromHandle(h);
+        if (_lastHicon != IntPtr.Zero) DestroyIcon(_lastHicon);
+        _lastHicon = h;
+    }
+
+    static Bitmap Render(List<double> lefts)
+    {
+        const int S = 32;
+        var bmp = new Bitmap(S, S);
+        using var g = Graphics.FromImage(bmp);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        var fg = Theme.TaskbarDark ? System.Drawing.Color.White : System.Drawing.Color.FromArgb(20, 20, 20);
+        var track = System.Drawing.Color.FromArgb(Theme.TaskbarDark ? 90 : 60, fg);
+        if (lefts.Count == 0) lefts = new List<double> { 100, 100 };
+        var rows = lefts.Take(2).ToList();
+        int barH = rows.Count == 1 ? 10 : 9, gap = 5;
+        int total = rows.Count * barH + (rows.Count - 1) * gap;
+        int y = (S - total) / 2;
+        foreach (var left in rows)
+        {
+            Pill(g, new SolidBrush(track), 1, y, S - 2, barH);
+            var color = left <= 10 ? System.Drawing.Color.FromArgb(229, 72, 77) : left <= 25 ? System.Drawing.Color.FromArgb(242, 157, 11) : fg;
+            var w = Math.Max(barH, (int)Math.Round((S - 2) * Math.Clamp(left, 0, 100) / 100));
+            if (left > 0) Pill(g, new SolidBrush(color), 1, y, w, barH);
+            y += barH + gap;
+        }
+        return bmp;
+    }
+
+    static void Pill(Graphics g, System.Drawing.Brush b, int x, int y, int w, int h)
+    {
+        using var path = new GraphicsPath();
+        path.AddArc(x, y, h, h, 90, 180);
+        path.AddArc(x + w - h, y, h, h, 270, 180);
+        path.CloseFigure();
+        g.FillPath(b, path);
+        b.Dispose();
+    }
+
+    [DllImport("user32.dll")] static extern bool DestroyIcon(IntPtr h);
+
+    public void Dispose()
+    {
+        _icon.Visible = false;
+        _icon.Dispose();
+        if (_lastHicon != IntPtr.Zero) DestroyIcon(_lastHicon);
+    }
+}

@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/QuotaBar.Core/QuotaBar.Core.csproj" />
+  </Folder>
+  <Folder Name="/src/QuotaBar.App/">
+    <Project Path="src/QuotaBar.App/QuotaBar.csproj" />
+  </Folder>
+  <Folder Name="/src/QuotaBar.Cli/">
+    <Project Path="src/QuotaBar.Cli/qb.csproj" />
+  </Folder>
+</Solution>
