@@ -1,8 +1,12 @@
-# Builds the release: a self-contained app folder, a portable zip and the Setup.exe installer.
-# Usage: .\build-release.ps1 [-Version 0.1.0]
-param([string]$Version = "0.1.1")
+# Builds the release: a self-contained app folder, a portable zip, the Setup.exe installer
+# and its .sha256 (the in-app updater refuses an installer without a matching checksum).
+# Usage: .\build-release.ps1 [-Version 0.1.2]   (default: <Version> in Directory.Build.props)
+param([string]$Version = "")
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
+
+if (-not $Version) { $Version = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.Version }
+"Building $Version"
 
 $out = "artifacts\WindowsAIQuotaBar"
 if (Test-Path artifacts) { Remove-Item artifacts -Recurse -Force }
@@ -21,4 +25,9 @@ if (-not $iscc) { throw "Inno Setup 6 not found (winget install JRSoftware.InnoS
 & $iscc /Q "/DAppVersion=$Version" installer\WindowsAIQuotaBar.iss
 if ($LASTEXITCODE) { throw "installer build failed" }
 
-Get-ChildItem artifacts -File | Format-Table Name, @{ n = "MB"; e = { [math]::Round($_.Length / 1MB, 1) } }
+$setup = "WindowsAIQuotaBar-Setup-$Version.exe"
+$hash = (Get-FileHash "artifacts\$setup" -Algorithm SHA256).Hash.ToLowerInvariant()
+[IO.File]::WriteAllText("$PSScriptRoot\artifacts\$setup.sha256", "$hash  $setup`n")
+
+Get-ChildItem artifacts -File | ForEach-Object { "{0,-50} {1,8:N1} MB" -f $_.Name, ($_.Length / 1MB) }
+"Publish: gh release create v$Version artifacts\$setup artifacts\$setup.sha256 artifacts\WindowsAIQuotaBar-$Version-win-x64-portable.zip --notes-file <notes>"

@@ -53,6 +53,7 @@ public sealed class TrayIcon : IDisposable
     {
         _icon = new NotifyIcon { Visible = true, Text = "Windows AI Quota Bar" };
         _icon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) App.Instance.TogglePanel(); };
+        _icon.BalloonTipClicked += (_, _) => App.Instance.ShowPanel();
         var menu = new ContextMenuStrip();
         menu.Items.Add("Open Windows AI Quota Bar", null, (_, _) => App.Instance.ShowPanel());
         menu.Items.Add("Refresh now", null, (_, _) => _ = App.Instance.RefreshAsync());
@@ -114,6 +115,12 @@ public sealed class TrayIcon : IDisposable
     }
 
     [DllImport("user32.dll")] static extern bool DestroyIcon(IntPtr h);
+
+    /// <summary>Windows notification from the tray icon (clicking it opens the panel).</summary>
+    public void Notify(string title, string text)
+    {
+        try { _icon.ShowBalloonTip(8000, title, text, ToolTipIcon.Info); } catch { }
+    }
 
     public void Dispose()
     {

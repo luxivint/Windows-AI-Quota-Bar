@@ -17,6 +17,12 @@ public sealed class AppSettings
     public string? LastSelectedProvider { get; set; }
     /// <summary>Accounts added with an API key / token (keys are stored encrypted, not here).</summary>
     public List<Providers.KeyAccount> KeyAccounts { get; set; } = new();
+    /// <summary>Look for a new release on GitHub (at start and every 6 hours).</summary>
+    public bool CheckForUpdates { get; set; } = true;
+    /// <summary>Install new releases without asking (only for installed copies).</summary>
+    public bool AutoInstallUpdates { get; set; } = false;
+    /// <summary>Last version we showed a notification for, so each release notifies once.</summary>
+    public string? NotifiedUpdate { get; set; }
 
     /// <summary>Demo mode: never written to disk.</summary>
     [System.Text.Json.Serialization.JsonIgnore] public bool ReadOnly { get; set; }

@@ -77,9 +77,27 @@ public static class SettingsPage
             Visuals.Chip(L.T("Copy", "Kopyala"), () => { try { Clipboard.SetText(cmd); } catch { } }),
             Visuals.Chip(L.T("Add to Claude Code", "Claude Code'a ekle"), () => PanelWindow.RunInTerminal(cmd), primary: true)));
 
+        // ---- Updates ----------------------------------------------------------------------------------------
+        var upd = Card(sp, "", L.T("Updates", "Güncellemeler"));
+        var current = $"{L.T("Version", "Sürüm")} {Updates.Current}";
+        string updSub = app.UpdateStatus
+            ?? (app.Update is { } nu ? L.T($"Version {nu.Version} is available", $"{nu.Version} sürümü hazır") : L.T("Checks GitHub releases", "GitHub sürümlerini kontrol eder"));
+        var updBtn = app.Update != null && !app.UpdateBusy
+            ? Visuals.Chip(Updates.CanSelfUpdate ? L.T("Update now", "Şimdi güncelle") : L.T("Download", "İndir"), () => _ = app.InstallUpdateAsync(), primary: true)
+            : Visuals.Chip(L.T("Check now", "Şimdi kontrol et"), async () => { await app.CheckUpdatesAsync(true); panel.Navigate("settings"); });
+        upd.Children.Add(Row(current, updSub, Buttons(updBtn)));
+        upd.Children.Add(Divider());
+        upd.Children.Add(Row(L.T("Check automatically", "Otomatik kontrol et"), L.T("At start and every 6 hours", "Açılışta ve 6 saatte bir"),
+            Toggle(s.CheckForUpdates, v => { s.CheckForUpdates = v; app.SaveSettings(); })));
+        upd.Children.Add(Divider());
+        upd.Children.Add(Row(L.T("Install automatically", "Otomatik kur"),
+            Updates.CanSelfUpdate || App.Demo ? L.T("Downloads, verifies and installs without asking", "Sormadan indirir, doğrular ve kurar")
+                                              : L.T("Only for copies installed with Setup", "Yalnızca Setup ile kurulan kopyalarda"),
+            Toggle(s.AutoInstallUpdates, v => { s.AutoInstallUpdates = v; app.SaveSettings(); })));
+
         // ---- About ------------------------------------------------------------------------------------------
         var about = Card(sp, "", L.T("About", "Hakkında"));
-        about.Children.Add(Row($"Windows AI Quota Bar {typeof(App).Assembly.GetName().Version?.ToString(3)}", L.T("Open source · MIT license", "Açık kaynak · MIT lisansı"),
+        about.Children.Add(Row("Windows AI Quota Bar", L.T("Open source · MIT license", "Açık kaynak · MIT lisansı"),
             Buttons(Visuals.Chip("GitHub", () => App.OpenUrl(RepoUrl)))));
         about.Children.Add(Divider());
         about.Children.Add(Buttons(

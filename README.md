@@ -75,8 +75,8 @@ Paste an API key for OpenRouter, GitHub Copilot, z.ai, Kimi, MiniMax, DeepSeek o
 </td>
 <td valign="top">
 
-### 🎨 Feels native
-Windows 11 Mica, rounded corners, follows light and dark mode. The UI is in English and Turkish.
+### 🎨 Feels native, stays current
+Windows 11 Mica, rounded corners, follows light and dark mode. The UI is in English and Turkish. **Updates itself**: it shows when a new version is out and installs it in one click.
 
 </td>
 </tr>
@@ -162,6 +162,7 @@ qb switch you@example.com   # switch the active Antigravity account
 
 - **No passwords, no telemetry, no server of its own.** The app reuses the logins your tools already keep on this PC and talks only to each provider's own API.
 - Anything it stores (the claude.ai session, extra Antigravity accounts, API keys) is encrypted with Windows DPAPI under `%LOCALAPPDATA%\QuotaBar` and can only be read by your Windows user.
+- The only other request is the update check: the app asks `api.github.com` for the latest release of this repository at start and every 6 hours. You can turn this off in Settings → Updates. Installers are verified against a published SHA256 before they run.
 - Antigravity tokens are refreshed with the OAuth client of your installed Antigravity, read from the `agy` binary at runtime. No client secret ships with this repo.
 
 <details>

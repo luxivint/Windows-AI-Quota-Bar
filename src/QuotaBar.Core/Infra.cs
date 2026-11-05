@@ -163,7 +163,7 @@ public static class Http
     {
         var h = new HttpClient(new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, UseCookies = false })
         { Timeout = TimeSpan.FromSeconds(25) };
-        h.DefaultRequestHeaders.UserAgent.ParseAdd("WindowsAIWindows AI Quota Bar/0.1 (+https://github.com/valuex-creative/Windows-AI-Quota-Bar)");
+        h.DefaultRequestHeaders.UserAgent.ParseAdd("WindowsAIQuotaBar/0.1 (+https://github.com/valuex-creative/Windows-AI-Quota-Bar)");
         h.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         return h;
     }

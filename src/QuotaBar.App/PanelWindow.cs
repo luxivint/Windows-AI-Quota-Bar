@@ -24,6 +24,7 @@ public sealed class PanelWindow : Window
     readonly TextBlock _footLeft = new(), _footRight = new();
     readonly Border _sidebar = new();
     readonly Grid _footer = new();
+    readonly Border _updateBar = new() { Visibility = Visibility.Collapsed };
     readonly Button _pinBtn, _refreshBtn;
 
     public PanelWindow()
@@ -50,7 +51,10 @@ public sealed class PanelWindow : Window
         var main = new Grid();
         main.RowDefinitions.Add(new RowDefinition());
         main.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        main.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         main.Children.Add(_scroll);
+        Grid.SetRow(_updateBar, 1);
+        main.Children.Add(_updateBar);
         _footer.Margin = new Thickness(20, 6, 12, 10);
         _footer.ColumnDefinitions.Add(new ColumnDefinition());
         _footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -64,7 +68,7 @@ public sealed class PanelWindow : Window
         Grid.SetColumn(_refreshBtn, 2); _footer.Children.Add(_refreshBtn);
         _pinBtn = IconButton("", L.T("Pin as a normal window", "Normal pencere olarak sabitle"), TogglePin);
         Grid.SetColumn(_pinBtn, 3); _footer.Children.Add(_pinBtn);
-        Grid.SetRow(_footer, 1);
+        Grid.SetRow(_footer, 2);
         main.Children.Add(_footer);
         Grid.SetColumn(main, 1);
         _root.Children.Add(main);
@@ -183,8 +187,46 @@ public sealed class PanelWindow : Window
         UpdateFooter();
     }
 
+    string? _barState;
+
+    /// <summary>"Update available" strip above the footer.</summary>
+    void UpdateUpdateBar()
+    {
+        var app = App.Instance;
+        var u = app.Update;
+        var state = u is null ? null : $"{u.Tag}|{app.UpdateStatus}|{app.UpdateBusy}|{Theme.Dark}";
+        if (state == _barState) return;
+        _barState = state;
+        if (u is null) { _updateBar.Visibility = Visibility.Collapsed; return; }
+
+        var g = new Grid();
+        g.ColumnDefinitions.Add(new ColumnDefinition());
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        text.Children.Add(Visuals.Label(L.T($"Version {u.Version} is available", $"{u.Version} sürümü hazır"), 12.5, Theme.Text, FontWeights.SemiBold));
+        var sub = Visuals.Label(app.UpdateStatus ?? L.T("See what's new", "Yenilikleri gör"), 11.5, app.UpdateStatus is null ? Theme.Accent : Theme.SubText);
+        if (app.UpdateStatus is null) { sub.Cursor = Cursors.Hand; sub.MouseLeftButtonDown += (_, e) => { e.Handled = true; App.OpenUrl(u.PageUrl); }; }
+        text.Children.Add(sub);
+        g.Children.Add(text);
+        if (!app.UpdateBusy)
+        {
+            var btn = Visuals.Chip(Updates.CanSelfUpdate ? L.T("Update", "Güncelle") : L.T("Download", "İndir"), () => _ = app.InstallUpdateAsync(), primary: true);
+            btn.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(btn, 1); g.Children.Add(btn);
+        }
+        _updateBar.Child = g;
+        _updateBar.Margin = new Thickness(14, 4, 12, 0);
+        _updateBar.Padding = new Thickness(12, 8, 8, 8);
+        _updateBar.CornerRadius = new CornerRadius(10);
+        _updateBar.BorderThickness = new Thickness(1);
+        _updateBar.BorderBrush = Theme.Accent;
+        _updateBar.Background = new SolidColorBrush(Color.FromArgb((byte)(Theme.Dark ? 40 : 26), ((SolidColorBrush)Theme.Accent).Color.R, ((SolidColorBrush)Theme.Accent).Color.G, ((SolidColorBrush)Theme.Accent).Color.B));
+        _updateBar.Visibility = Visibility.Visible;
+    }
+
     void UpdateFooter()
     {
+        UpdateUpdateBar();
         var app = App.Instance;
         var now = DateTimeOffset.Now;
         _footLeft.Text = app.Refreshing ? L.T("Updating…", "Güncelleniyor…")

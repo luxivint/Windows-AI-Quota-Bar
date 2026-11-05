@@ -3,7 +3,7 @@
 
 #define AppName "Windows AI Quota Bar"
 #ifndef AppVersion
-  #define AppVersion "0.1.1"
+  #define AppVersion "0.1.2"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\artifacts\WindowsAIQuotaBar"
@@ -62,6 +62,8 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\QuotaBar.exe"; Tasks: desktop
 
 [Run]
 Filename: "{app}\QuotaBar.exe"; Description: "{cm:LaunchApp}"; Flags: nowait postinstall skipifsilent
+; Silent install = in-app update: start the new version again (it shows an "Updated" notification).
+Filename: "{app}\QuotaBar.exe"; Parameters: "--background --updated"; Flags: nowait; Check: WizardSilent
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/IM QuotaBar.exe /F"; Flags: runhidden; RunOnceId: "KillApp"
