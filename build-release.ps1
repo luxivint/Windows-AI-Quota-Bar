@@ -1,6 +1,6 @@
 # Builds the release: a self-contained app folder, a portable zip and the Setup.exe installer.
 # Usage: .\build-release.ps1 [-Version 0.1.0]
-param([string]$Version = "0.1.0")
+param([string]$Version = "0.1.1")
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 

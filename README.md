@@ -91,16 +91,16 @@ Windows 11 Mica, rounded corners, follows light and dark mode. The UI is in Engl
 
 | | Provider | What is shown | Where the login comes from |
 |:-:|---|---|---|
-| <img src="src/QuotaBar.App/Assets/icons/claude.svg" width="18"> | **Claude** (Pro / Max) | 5-hour session, weekly, weekly Opus/Sonnet | Sign in to claude.ai inside the app, **or** your Claude Code CLI login |
-| <img src="src/QuotaBar.App/Assets/icons/codex.svg" width="18"> | **Codex / ChatGPT** (Plus / Pro) | 5-hour session, weekly, credits | `codex login` |
-| <img src="src/QuotaBar.App/Assets/icons/antigravity.png" width="18"> | **Google Antigravity** | Gemini Pro, Gemini Flash, Claude, GPT-OSS, Image quotas, per account | `agy` CLI login |
-| <img src="src/QuotaBar.App/Assets/icons/opencode.svg" width="18"> | **OpenCode Go** | 5-hour, weekly, monthly | Keys saved by OpenCode, or added in Settings |
-| | **OpenRouter** | Credits, key limit, daily / weekly / monthly spend | API key |
-| | **GitHub Copilot** <sup>beta</sup> | Premium requests, chat quota | `gh auth token` (auto-detected) |
-| | **z.ai GLM Coding** <sup>beta</sup> | 5-hour prompts, monthly tool calls | API key |
-| | **Kimi Code** <sup>beta</sup> | Plan usage | API key |
-| | **MiniMax Coding** <sup>beta</sup> | Prompts per window | API key |
-| | **DeepSeek** · **Moonshot** | Account balance | API key |
+| <img src="docs/icons/claude.svg" width="18"> | **Claude** (Pro / Max) | 5-hour session, weekly, weekly Opus/Sonnet | Sign in to claude.ai inside the app, **or** your Claude Code CLI login |
+| <img src="docs/icons/codex.svg" width="18"> | **Codex / ChatGPT** (Plus / Pro) | 5-hour session, weekly, credits | `codex login` |
+| <img src="docs/icons/antigravity.png" width="18"> | **Google Antigravity** | Gemini Pro, Gemini Flash, Claude, GPT-OSS, Image quotas, per account | `agy` CLI login |
+| <img src="docs/icons/opencode.svg" width="18"> | **OpenCode Go** | 5-hour, weekly, monthly | Keys saved by OpenCode, or added in Settings |
+| <img src="docs/icons/openrouter.svg" width="18"> | **OpenRouter** | Credits, key limit, daily / weekly / monthly spend | API key |
+| <img src="docs/icons/github.svg" width="18"> | **GitHub Copilot** <sup>beta</sup> | Premium requests, chat quota | `gh auth token` (auto-detected) |
+| <img src="docs/icons/zdotai.svg" width="18"> | **z.ai GLM Coding** <sup>beta</sup> | 5-hour prompts, monthly tool calls | API key |
+| <img src="docs/icons/kimi.svg" width="18"> | **Kimi Code** <sup>beta</sup> | Plan usage | API key |
+| <img src="docs/icons/minimax.svg" width="18"> | **MiniMax Coding** <sup>beta</sup> | Prompts per window | API key |
+| <img src="docs/icons/deepseek.svg" width="18"> <img src="docs/icons/moonshot.svg" width="18"> | **DeepSeek** · **Moonshot** | Account balance | API key |
 
 Missing one? [Open a provider request](https://github.com/valuex-creative/Windows-AI-Quota-Bar/issues/new?title=Provider%20request%3A%20).
 
@@ -112,7 +112,7 @@ Missing one? [Open a provider request](https://github.com/valuex-creative/Window
 
 ### Download (recommended)
 
-1. Download **[WindowsAIQuotaBar-Setup-0.1.0.exe](https://github.com/valuex-creative/Windows-AI-Quota-Bar/releases/latest)** from the latest release.
+1. Download **[WindowsAIQuotaBar-Setup.exe](https://github.com/valuex-creative/Windows-AI-Quota-Bar/releases/latest)** from the latest release.
 2. Double-click it. It installs for your user only, so you do not need admin rights.
 
 That's it. The app appears next to the clock and starts with Windows (you can turn that off in Settings). Uninstall it from **Settings → Apps** like any other app.

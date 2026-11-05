@@ -62,7 +62,8 @@ public static class SettingsPage
 
         // ---- AI assistant ---------------------------------------------------------------------------------
         var ai = Card(sp, "", L.T("Ask your AI assistant", "Yapay zekâ asistanına sor"));
-        var qb = System.IO.Path.Combine(AppContext.BaseDirectory, "qb.exe");
+        // Demo mode (README screenshots) shows a generic path instead of where this copy really lives.
+        var qb = App.Demo ? @"C:\Users\you\AppData\Local\Programs\QuotaBar\qb.exe" : System.IO.Path.Combine(AppContext.BaseDirectory, "qb.exe");
         var cmd = $"claude mcp add --scope user quotabar -- \"{qb}\" mcp";
         ai.Children.Add(Hint(L.T("Windows AI Quota Bar includes an MCP server. Add it once and Claude Code (or any MCP client) can answer \"how much usage do I have left?\".",
                                  "Windows AI Quota Bar bir MCP sunucusu içerir. Bir kez ekle; Claude Code (veya başka bir MCP istemcisi) \"ne kadar kullanımım kaldı?\" sorusunu yanıtlar.")));

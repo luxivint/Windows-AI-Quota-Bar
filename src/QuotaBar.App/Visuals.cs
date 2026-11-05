@@ -16,71 +16,116 @@ public static class Visuals
         "openrouter" => Color.FromRgb(0x6A, 0x6F, 0xF5),
         "copilot" => Color.FromRgb(0x8B, 0x5C, 0xF6),
         "zai" => Color.FromRgb(0x25, 0x63, 0xEB),
-        "kimi" => Color.FromRgb(0x1F, 0x2A, 0x44),
-        "minimax" => Color.FromRgb(0xE1, 0x1D, 0x48),
+        "kimi" => Color.FromRgb(0x02, 0x7A, 0xFF),
+        "minimax" => Color.FromRgb(0xE7, 0x35, 0x62),
         "deepseek" => Color.FromRgb(0x4D, 0x6B, 0xFE),
         "moonshot" => Color.FromRgb(0x2B, 0x2F, 0x3A),
         "opencode-go" => Theme.Dark ? Color.FromRgb(0x8E, 0x9B, 0xFF) : Color.FromRgb(0x4F, 0x5B, 0xD5),
         _ => Color.FromRgb(0x88, 0x88, 0x88),
     };
 
-    static readonly Dictionary<string, (Geometry geo, bool brand)?> _svgCache = new();
+    sealed record SvgPart(Geometry Geo, Color? Fill, Color? Stroke, double StrokeWidth);
+    sealed record SvgIcon(List<SvgPart> Parts, double Width, double Height, bool Mono);
+    static readonly Dictionary<string, SvgIcon?> _svgCache = new();
 
-    /// <summary>Loads the single-path SVG icons shipped in Assets/icons (24x24 viewBox).</summary>
-    static (Geometry geo, bool brand)? Svg(string file)
+    /// <summary>
+    /// Minimal SVG reader for the logo files in Assets/icons: viewBox, &lt;path&gt; with fill / stroke / fill-rule,
+    /// inherited attributes from &lt;svg&gt; / &lt;g&gt;, and a uniform scale() transform. Logos drawn only in
+    /// black / white / currentColor are "mono" and get painted with the theme text color.
+    /// </summary>
+    static SvgIcon? Svg(string file)
     {
         if (_svgCache.TryGetValue(file, out var cached)) return cached;
-        (Geometry, bool)? result = null;
+        SvgIcon? result = null;
         try
         {
             var info = Application.GetResourceStream(new Uri($"pack://application:,,,/Assets/icons/{file}"));
             if (info != null)
             {
-                using var r = new System.IO.StreamReader(info.Stream);
-                var text = r.ReadToEnd();
-                var d = System.Text.RegularExpressions.Regex.Match(text, "<path[^>]*\\sd=\"([^\"]+)\"").Groups[1].Value;
-                var geo = Geometry.Parse(d).Clone();
-                if (geo is PathGeometry pg && text.Contains("evenodd")) pg.FillRule = FillRule.EvenOdd;
-                geo.Freeze();
-                var brand = !text.Contains("currentColor") && !text.Contains("fill=\"#111\"");
-                result = (geo, brand);
+                var doc = System.Xml.Linq.XDocument.Load(info.Stream);
+                var root = doc.Root!;
+                var vb = ((string?)root.Attribute("viewBox") ?? "0 0 24 24").Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries).Select(v => double.Parse(v, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+                double w = vb[2], h = vb[3];
+                var parts = new List<SvgPart>();
+                var colors = new List<string>();
+                string? Inherit(System.Xml.Linq.XElement e, string name)
+                {
+                    for (var x = e; x != null; x = x.Parent)
+                        if ((string?)x.Attribute(name) is { } v) return v;
+                    return null;
+                }
+                foreach (var el in root.Descendants().Where(e => e.Name.LocalName == "path" && !e.Ancestors().Any(a => a.Name.LocalName is "mask" or "defs" or "clipPath")))
+                {
+                    var d = (string?)el.Attribute("d");
+                    if (string.IsNullOrWhiteSpace(d)) continue;
+                    var geo = Geometry.Parse(d).Clone();
+                    if (geo is PathGeometry pg && Inherit(el, "fill-rule") == "evenodd") pg.FillRule = FillRule.EvenOdd;
+                    var tf = (string?)el.Attribute("transform");
+                    if (tf != null && System.Text.RegularExpressions.Regex.Match(tf, @"scale\(([\d.]+)") is { Success: true } m)
+                    {
+                        var k = double.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+                        geo.Transform = new ScaleTransform(k, k);
+                    }
+                    geo.Freeze();
+                    var sw = (string?)el.Attribute("stroke-width") ?? Inherit(el, "stroke-width");
+                    var stroke = sw != null ? Inherit(el, "stroke") : null;
+                    var fill = sw != null ? null : Inherit(el, "fill") ?? "#000";
+                    if (fill != null) colors.Add(fill);
+                    if (stroke != null) colors.Add(stroke);
+                    parts.Add(new SvgPart(geo, ParseColor(fill), ParseColor(stroke),
+                        sw is null ? 0 : double.Parse(sw, System.Globalization.CultureInfo.InvariantCulture)));
+                }
+                var mono = colors.All(c => c.ToLowerInvariant() is "currentcolor" or "#000" or "#000000" or "black" or "#111" or "#181717" or "#fff" or "#ffff" or "#ffffff" or "white");
+                if (parts.Count > 0) result = new SvgIcon(parts, w, h, mono);
             }
         }
-        catch { }
+        catch (Exception e) { App.Log($"icon {file}: {e.Message}"); }
         _svgCache[file] = result;
         return result;
     }
+
+    static Color? ParseColor(string? c)
+    {
+        if (c is null || c == "none" || c.Equals("currentColor", StringComparison.OrdinalIgnoreCase)) return c is null || c == "none" ? null : Colors.Black;
+        if (c.Length == 5 && c[0] == '#') c = c[..4];   // "#ffff" seen in the wild: treat as #fff
+        try { return (Color)ColorConverter.ConvertFromString(c); } catch { return Colors.Black; }
+    }
+
+    static readonly Dictionary<string, string> IconFiles = new()
+    {
+        ["claude"] = "claude.svg", ["codex"] = "codex.svg", ["opencode-go"] = "opencode.svg",
+        ["openrouter"] = "openrouter.svg", ["copilot"] = "github.svg", ["zai"] = "zdotai.svg", ["kimi"] = "kimi.svg",
+        ["minimax"] = "minimax.svg", ["deepseek"] = "deepseek.svg", ["moonshot"] = "moonshot.svg",
+    };
 
     static System.Windows.Media.Imaging.BitmapImage? _agy;
 
     public static FrameworkElement Icon(string kind, double size, Brush? overrideBrush = null)
     {
-        switch (kind)
+        if (kind == "antigravity")
         {
-            case "claude":
-            case "codex":
-            case "opencode-go":
+            try
             {
-                var file = kind switch { "claude" => "claude.svg", "codex" => "codex.svg", _ => "opencode.svg" };
-                if (Svg(file) is { } svg)
-                {
-                    // Claude keeps its brand orange; monochrome marks follow the text color (or the taskbar color).
-                    var fill = svg.brand ? new SolidColorBrush(BrandColor(kind)) : overrideBrush ?? Theme.Text;
-                    var path = new Path { Data = svg.geo, Fill = fill, Stretch = Stretch.Uniform };
-                    return new Viewbox { Width = size, Height = size, Child = new Grid { Width = 24, Height = 24, Children = { path } } };
-                }
-                break;
+                _agy ??= new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/Assets/icons/antigravity.png"));
+                var img = new Image { Source = _agy, Width = size, Height = size, Stretch = Stretch.Uniform };
+                RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
+                return img;
             }
-            case "antigravity":
-                try
+            catch { }
+        }
+        else if (IconFiles.TryGetValue(kind, out var file) && Svg(file) is { } svg)
+        {
+            // Mono marks follow the text color (or the taskbar color); colored logos keep their own colors.
+            var canvas = new Canvas { Width = svg.Width, Height = svg.Height };
+            foreach (var part in svg.Parts)
+            {
+                Brush? Paint(Color? c) => c is null ? null : svg.Mono ? overrideBrush ?? Theme.Text : new SolidColorBrush(c.Value);
+                canvas.Children.Add(new Path
                 {
-                    _agy ??= new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/Assets/icons/antigravity.png"));
-                    var img = new Image { Source = _agy, Width = size, Height = size, Stretch = Stretch.Uniform };
-                    RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
-                    return img;
-                }
-                catch { }
-                break;
+                    Data = part.Geo, Fill = Paint(part.Fill), Stroke = Paint(part.Stroke), StrokeThickness = part.StrokeWidth,
+                });
+            }
+            return new Viewbox { Width = size, Height = size, Stretch = Stretch.Uniform, Child = canvas };
         }
         return Monogram(kind, size);
     }

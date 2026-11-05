@@ -125,7 +125,9 @@ public sealed class PanelWindow : Window
 
     public void Navigate(string page)
     {
+        var changed = page != _page;
         _page = page;
+        if (changed) _scroll.ScrollToTop();
         if (page != "settings") { App.Instance.Settings.LastSelectedProvider = page; try { App.Instance.Settings.Save(); } catch { } }
         Rebuild();
     }
