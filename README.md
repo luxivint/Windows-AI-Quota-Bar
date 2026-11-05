@@ -22,7 +22,7 @@
   <a href="#features">Features</a> ·
   <a href="#supported-providers">Providers</a> ·
   <a href="#ask-your-ai-assistant-mcp">MCP</a> ·
-  <a href="#privacy">Privacy</a>
+  <a href="#privacy--security">Security</a>
 </p>
 
 <p align="center">
@@ -158,12 +158,15 @@ qb accounts                 # Antigravity accounts (* = active)
 qb switch you@example.com   # switch the active Antigravity account
 ```
 
-## Privacy
+## Privacy & security
 
-- **No passwords, no telemetry, no server of its own.** The app reuses the logins your tools already keep on this PC and talks only to each provider's own API.
-- Anything it stores (the claude.ai session, extra Antigravity accounts, API keys) is encrypted with Windows DPAPI under `%LOCALAPPDATA%\QuotaBar` and can only be read by your Windows user.
-- The only other request is the update check: the app asks `api.github.com` for the latest release of this repository at start and every 6 hours. You can turn this off in Settings → Updates. Installers are verified against a published SHA256 before they run.
-- Antigravity tokens are refreshed with the OAuth client of your installed Antigravity, read from the `agy` binary at runtime. No client secret ships with this repo.
+- **No telemetry, no server of its own.** The app only talks to each provider's own API, and to GitHub to check for updates (you can turn that off).
+- **It reads the logins your tools already keep on this PC.** It writes to another tool's login file only when that tool's token has expired. The refresh is locked, conflict-checked and atomic, so it cannot break a refresh the CLI is doing.
+- **Everything it stores is encrypted** with Windows DPAPI for your Windows user. Your `gh` token is never copied.
+- **Updates are signed.** An installer is accepted only if its ECDSA signature matches the public key built into the app. Automatic install is off by default.
+- **AI assistants can only read** your usage, unless you allow account switching in Settings.
+
+**[SECURITY.md](SECURITY.md)** lists every file the app reads or writes and every host it talks to, and shows how to verify a release yourself (hash, signature, build from source).
 
 <details>
 <summary><b>How Antigravity account switching works</b></summary>

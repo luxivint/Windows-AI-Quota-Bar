@@ -29,5 +29,12 @@ $setup = "WindowsAIQuotaBar-Setup-$Version.exe"
 $hash = (Get-FileHash "artifacts\$setup" -Algorithm SHA256).Hash.ToLowerInvariant()
 [IO.File]::WriteAllText("$PSScriptRoot\artifacts\$setup.sha256", "$hash  $setup`n")
 
+# Sign the installer with the maintainer's update key (DPAPI-protected on this PC, never in the repo).
+# Installed copies refuse an update whose signature does not match the public key compiled into the app.
+dotnet run --project tools/ReleaseSigner -c Release -- sign "artifacts\$setup"
+if ($LASTEXITCODE) { throw "signing failed (no key? see tools/ReleaseSigner)" }
+dotnet run --project tools/ReleaseSigner -c Release --no-build -- verify "artifacts\$setup"
+if ($LASTEXITCODE) { throw "signature check failed" }
+
 Get-ChildItem artifacts -File | ForEach-Object { "{0,-50} {1,8:N1} MB" -f $_.Name, ($_.Length / 1MB) }
-"Publish: gh release create v$Version artifacts\$setup artifacts\$setup.sha256 artifacts\WindowsAIQuotaBar-$Version-win-x64-portable.zip --notes-file <notes>"
+"Publish: gh release create v$Version artifacts\$setup artifacts\$setup.sha256 artifacts\$setup.sig artifacts\WindowsAIQuotaBar-$Version-win-x64-portable.zip --notes-file <notes>"

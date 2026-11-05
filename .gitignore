@@ -4,3 +4,8 @@ obj/
 *.user
 publish/
 artifacts/
+
+# Never commit signing keys
+*.key
+*.pem
+*.p8

@@ -18,7 +18,8 @@ public sealed class CodexProvider : IUsageProvider
         if (!File.Exists(AuthPath))
             return new[] { ProviderSnapshot.Fail(Kind, Kind, Name, ProviderStatus.NeedsLogin, "Run `codex login` once, then refresh.") };
 
-        var auth = JsonNode.Parse(await File.ReadAllTextAsync(AuthPath, ct))!.AsObject();
+        var text = await File.ReadAllTextAsync(AuthPath, ct);
+        var auth = JsonNode.Parse(text)!.AsObject();
         var tokens = auth["tokens"]?.AsObject();
         var access = tokens?["access_token"]?.GetValue<string>();
         if (string.IsNullOrEmpty(access))
@@ -28,8 +29,9 @@ public sealed class CodexProvider : IUsageProvider
         try { usage = await GetUsage(tokens!, ct); }
         catch (Http.HttpError e) when (e.Code is 401 or 403)
         {
-            await Refresh(auth, ct);
-            usage = await GetUsage(auth["tokens"]!.AsObject(), ct);
+            // Token expired: refresh it without trampling a refresh the Codex CLI may be doing at the same time.
+            var fresh = await TokenFile.RefreshAsync(AuthPath, text, current => Refresh(current, ct), ct);
+            usage = await GetUsage(JsonNode.Parse(fresh)!["tokens"]!.AsObject(), ct);
         }
         return new[] { Parse(usage) };
     }
@@ -42,8 +44,10 @@ public sealed class CodexProvider : IUsageProvider
         return await Http.SendJson(req, ct);
     }
 
-    static async Task Refresh(JsonObject auth, CancellationToken ct)
+    /// <summary>Returns the auth.json content with refreshed tokens (all other fields untouched).</summary>
+    static async Task<string> Refresh(string fileText, CancellationToken ct)
     {
+        var auth = JsonNode.Parse(fileText)!.AsObject();
         var tokens = auth["tokens"]!.AsObject();
         var rt = tokens["refresh_token"]?.GetValue<string>() ?? throw new InvalidOperationException("Codex session expired. Run `codex login`.");
         var req = new HttpRequestMessage(HttpMethod.Post, "https://auth.openai.com/oauth/token")
@@ -58,10 +62,8 @@ public sealed class CodexProvider : IUsageProvider
         if (r.Str("refresh_token") is { } rr) tokens["refresh_token"] = rr;
         if (r.Str("id_token") is { } id) tokens["id_token"] = id;
         auth["last_refresh"] = DateTimeOffset.UtcNow.ToString("O");
-        // Write back so the Codex CLI keeps working with the rotated refresh token.
-        var tmp = AuthPath + ".quotabar.tmp";
-        await File.WriteAllTextAsync(tmp, auth.ToJsonString(new JsonSerializerOptions { WriteIndented = true }), ct);
-        File.Move(tmp, AuthPath, overwrite: true);
+        // Written back (by TokenFile) so the Codex CLI keeps working with the rotated refresh token.
+        return auth.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
     }
 
     ProviderSnapshot Parse(JsonElement u)

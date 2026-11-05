@@ -96,7 +96,8 @@ public sealed class ClaudeProvider : IUsageProvider
     async Task<ProviderSnapshot?> FromOAuth(CancellationToken ct)
     {
         if (!File.Exists(CredPath)) return null;
-        var root = JsonNode.Parse(await File.ReadAllTextAsync(CredPath, ct))?.AsObject();
+        var text = await File.ReadAllTextAsync(CredPath, ct);
+        var root = JsonNode.Parse(text)?.AsObject();
         var o = root?["claudeAiOauth"]?.AsObject();
         if (o is null) return null;
         var access = o["accessToken"]?.GetValue<string>();
@@ -106,17 +107,21 @@ public sealed class ClaudeProvider : IUsageProvider
 
         if ((string.IsNullOrEmpty(access) || expiresAt < DateTimeOffset.UtcNow.AddMinutes(1).ToUnixTimeMilliseconds()) && !string.IsNullOrEmpty(refresh))
         {
-            var r = await Http.SendJson(new HttpRequestMessage(HttpMethod.Post, "https://console.anthropic.com/v1/oauth/token")
+            // Refresh without trampling a refresh Claude Code may be doing at the same time (see TokenFile).
+            var fresh = await TokenFile.RefreshAsync(CredPath, text, async current =>
             {
-                Content = JsonContent.Create(new { grant_type = "refresh_token", refresh_token = refresh, client_id = OAuthClientId }),
+                var cur = JsonNode.Parse(current)!.AsObject();
+                var co = cur["claudeAiOauth"]!.AsObject();
+                var r = await Http.SendJson(new HttpRequestMessage(HttpMethod.Post, "https://console.anthropic.com/v1/oauth/token")
+                {
+                    Content = JsonContent.Create(new { grant_type = "refresh_token", refresh_token = co["refreshToken"]!.GetValue<string>(), client_id = OAuthClientId }),
+                }, ct);
+                co["accessToken"] = r.Str("access_token");
+                if (r.Str("refresh_token") is { } nr) co["refreshToken"] = nr;
+                co["expiresAt"] = DateTimeOffset.UtcNow.AddSeconds(r.Num("expires_in") ?? 3600).ToUnixTimeMilliseconds();
+                return cur.ToJsonString();
             }, ct);
-            access = r.Str("access_token");
-            o["accessToken"] = access;
-            if (r.Str("refresh_token") is { } nr) o["refreshToken"] = nr;
-            o["expiresAt"] = DateTimeOffset.UtcNow.AddSeconds(r.Num("expires_in") ?? 3600).ToUnixTimeMilliseconds();
-            var tmp = CredPath + ".quotabar.tmp";
-            await File.WriteAllTextAsync(tmp, root!.ToJsonString(), ct);
-            File.Move(tmp, CredPath, overwrite: true);
+            access = JsonNode.Parse(fresh)?["claudeAiOauth"]?["accessToken"]?.GetValue<string>();
         }
         if (string.IsNullOrEmpty(access)) return null;
 

@@ -159,15 +159,14 @@ static class Mcp
                 {
                     ["protocolVersion"] = p?["protocolVersion"]?.GetValue<string>() ?? "2025-06-18",
                     ["capabilities"] = new JsonObject { ["tools"] = new JsonObject() },
-                    ["serverInfo"] = new JsonObject { ["name"] = "quotabar", ["version"] = "0.1.0" },
+                    ["serverInfo"] = new JsonObject { ["name"] = "quotabar", ["version"] = Updates.Current.ToString(3) },
                     ["instructions"] = "Windows AI Quota Bar reports remaining usage of the user's AI subscriptions (Claude, Codex/ChatGPT, Google Antigravity accounts, OpenCode Go). Use get_usage when the user asks how much quota/limit/usage is left.",
                 };
             case "ping":
                 return new JsonObject();
             case "tools/list":
-                return new JsonObject
-                {
-                    ["tools"] = new JsonArray
+            {
+                var tools = new JsonArray
                     {
                         new JsonObject
                         {
@@ -178,21 +177,27 @@ static class Mcp
                                 ["provider"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("claude", "codex", "antigravity", "opencode-go") },
                                 ["cached"] = new JsonObject { ["type"] = "boolean", ["description"] = "Use the last snapshot from the Windows AI Quota Bar app instead of fetching live." },
                             }),
+                            ["annotations"] = ReadOnly(),
                         },
                         new JsonObject
                         {
                             ["name"] = "list_antigravity_accounts",
                             ["description"] = "List Google Antigravity accounts known to Windows AI Quota Bar and which one is active in the agy CLI.",
                             ["inputSchema"] = Schema(new JsonObject()),
+                            ["annotations"] = ReadOnly(),
                         },
-                        new JsonObject
-                        {
-                            ["name"] = "switch_antigravity_account",
-                            ["description"] = "Make another stored Google account the active Antigravity (agy) account. Only call when the user asks to switch.",
-                            ["inputSchema"] = Schema(new JsonObject { ["email"] = new JsonObject { ["type"] = "string" } }, "email"),
-                        },
-                    },
-                };
+                    };
+                // Changing the active account is a write, so it is only offered when the user turned it on in Settings.
+                if (AppSettings.Load().AllowAssistantAccountSwitch)
+                    tools.Add(new JsonObject
+                    {
+                        ["name"] = "switch_antigravity_account",
+                        ["description"] = "Make another stored Google account the active Antigravity (agy) account. Only call when the user asks to switch.",
+                        ["inputSchema"] = Schema(new JsonObject { ["email"] = new JsonObject { ["type"] = "string" } }, "email"),
+                        ["annotations"] = new JsonObject { ["readOnlyHint"] = false, ["destructiveHint"] = false, ["openWorldHint"] = false },
+                    });
+                return new JsonObject { ["tools"] = tools };
+            }
             case "tools/call":
             {
                 var name = p?["name"]?.GetValue<string>();
@@ -211,8 +216,12 @@ static class Mcp
         }
     }
 
+    static JsonObject ReadOnly() => new() { ["readOnlyHint"] = true, ["openWorldHint"] = false };
+
     static string Switch(string? email)
     {
+        if (!AppSettings.Load().AllowAssistantAccountSwitch)
+            throw new InvalidOperationException("Account switching by AI assistants is turned off. The user can enable it in Windows AI Quota Bar → Settings → Ask your AI assistant.");
         if (string.IsNullOrEmpty(email)) throw new InvalidOperationException("email is required");
         AntigravityAccounts.Switch(email);
         return $"Active Antigravity account is now {email}. Running agy sessions must be restarted.";

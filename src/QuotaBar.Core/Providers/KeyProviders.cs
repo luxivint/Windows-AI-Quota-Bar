@@ -27,8 +27,9 @@ public static class KeyProviders
     {
         new("openrouter", "OpenRouter", "Credits and key limit across 300+ models", "sk-or-…",
             "https://openrouter.ai/settings/keys", "https://openrouter.ai/activity", "https://status.openrouter.ai", false, OpenRouter),
-        new("copilot", "GitHub Copilot", "Premium requests and chat quota", "GitHub token (gh auth token)",
-            "https://github.com/settings/tokens", "https://github.com/settings/copilot", "https://www.githubstatus.com", true, Copilot, DetectGh),
+        new("copilot", "GitHub Copilot", "Premium requests and chat quota", "GitHub token",
+            "https://github.com/settings/tokens", "https://github.com/settings/copilot", "https://www.githubstatus.com", true, Copilot,
+            () => DetectGh() != null ? GhCli : null),
         new("zai", "z.ai GLM Coding", "GLM Coding Plan: 5-hour prompts and monthly tool calls", "API key",
             "https://z.ai/manage-apikey/apikey-list", "https://z.ai/manage-apikey/subscription", null, true, Zai),
         new("kimi", "Kimi Code", "Kimi For Coding plan usage", "API key (sk-kimi-…)",
@@ -135,6 +136,12 @@ public static class KeyProviders
 
     // ---- GitHub Copilot: GET api.github.com/copilot_internal/user ------------------------------------
 
+    /// <summary>
+    /// Stored instead of a token when the user picks "use my GitHub CLI login": the token is asked from
+    /// `gh auth token` at each refresh and never copied into our storage.
+    /// </summary>
+    public const string GhCli = "@gh-cli";
+
     static string? DetectGh()
     {
         try
@@ -150,6 +157,7 @@ public static class KeyProviders
 
     static async Task<ProviderSnapshot> Copilot(string token, CancellationToken ct)
     {
+        if (token == GhCli) token = DetectGh() ?? throw new InvalidOperationException("GitHub CLI is not signed in. Run `gh auth login`.");
         var j = await Get("https://api.github.com/copilot_internal/user", ct, headers: new()
         {
             ["Authorization"] = "token " + token,

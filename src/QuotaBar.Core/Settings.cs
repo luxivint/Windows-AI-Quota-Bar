@@ -19,6 +19,8 @@ public sealed class AppSettings
     public List<Providers.KeyAccount> KeyAccounts { get; set; } = new();
     /// <summary>Look for a new release on GitHub (at start and every 6 hours).</summary>
     public bool CheckForUpdates { get; set; } = true;
+    /// <summary>Expose the switch_antigravity_account MCP tool. Off by default: AI assistants can only read usage.</summary>
+    public bool AllowAssistantAccountSwitch { get; set; } = false;
     /// <summary>Install new releases without asking (only for installed copies).</summary>
     public bool AutoInstallUpdates { get; set; } = false;
     /// <summary>Last version we showed a notification for, so each release notifies once.</summary>

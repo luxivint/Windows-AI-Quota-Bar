@@ -76,6 +76,10 @@ public static class SettingsPage
         ai.Children.Add(Buttons(
             Visuals.Chip(L.T("Copy", "Kopyala"), () => { try { Clipboard.SetText(cmd); } catch { } }),
             Visuals.Chip(L.T("Add to Claude Code", "Claude Code'a ekle"), () => PanelWindow.RunInTerminal(cmd), primary: true)));
+        ai.Children.Add(Divider());
+        ai.Children.Add(Row(L.T("Let assistants switch Antigravity accounts", "Asistanlar Antigravity hesabını değiştirebilsin"),
+            L.T("Off: assistants can only read usage", "Kapalı: asistanlar yalnızca kullanımı okuyabilir"),
+            Toggle(s.AllowAssistantAccountSwitch, v => { s.AllowAssistantAccountSwitch = v; app.SaveSettings(); })));
 
         // ---- Updates ----------------------------------------------------------------------------------------
         var upd = Card(sp, "", L.T("Updates", "Güncellemeler"));
@@ -401,11 +405,19 @@ public static class SettingsPage
         }, primary: true);
         var buttons = Buttons(save);
         if (autoDetect != null)
-            buttons.Children.Add(Visuals.Chip(L.T("Find automatically", "Otomatik bul"), () =>
+            buttons.Children.Add(Visuals.Chip(L.T("Use my GitHub CLI login", "GitHub CLI girişimi kullan"), () =>
             {
                 var found = autoDetect();
-                if (found != null) key.Password = found;
-                else { status.Text = L.T("Nothing found. Run `gh auth login` first.", "Bulunamadı. Önce `gh auth login` çalıştır."); status.Visibility = Visibility.Visible; }
+                status.Visibility = Visibility.Visible;
+                if (found != null)
+                {
+                    // Placeholder, not the token: the token is read from `gh` at each refresh and never stored here.
+                    key.Password = found;
+                    status.Foreground = Theme.SubText;
+                    status.Text = L.T("Your GitHub CLI login will be used at each refresh. The token is not copied or stored.",
+                                      "Her yenilemede GitHub CLI girişin kullanılır. Token kopyalanmaz, saklanmaz.");
+                }
+                else status.Text = L.T("Nothing found. Run `gh auth login` first.", "Bulunamadı. Önce `gh auth login` çalıştır.");
             }));
         if (keyUrl != null) buttons.Children.Add(Visuals.Chip(L.T("Get a key ↗", "Anahtar al ↗"), () => App.OpenUrl(keyUrl)));
         buttons.Margin = new Thickness(0, 12, 0, 0);

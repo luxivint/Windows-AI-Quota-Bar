@@ -4,16 +4,26 @@ using System.Text.Json;
 
 namespace QuotaBar.Core;
 
-public sealed record UpdateInfo(Version Version, string Tag, string PageUrl, string? SetupUrl, string? ShaUrl, string? Notes, DateTimeOffset? PublishedAt);
+public sealed record UpdateInfo(Version Version, string Tag, string PageUrl, string? SetupUrl, string? ShaUrl, string? SigUrl, string? Notes, DateTimeOffset? PublishedAt);
 
 /// <summary>
-/// Self-update through GitHub Releases: no server of our own. A release is expected to carry
-/// <c>WindowsAIQuotaBar-Setup-X.Y.Z.exe</c> and <c>WindowsAIQuotaBar-Setup-X.Y.Z.exe.sha256</c>.
+/// Self-update through GitHub Releases: no server of our own. A release carries
+/// <c>WindowsAIQuotaBar-Setup-X.Y.Z.exe</c>, its <c>.sha256</c> and its <c>.sig</c>.
+/// <para>
+/// An update is installed only when the installer's ECDSA P-256 signature verifies against
+/// <see cref="UpdatePublicKey"/>, which is compiled into the app. The matching private key exists only
+/// on the maintainer's PC (see tools/ReleaseSigner), so someone who could replace files on the GitHub
+/// release still could not get an installer accepted. The SHA-256 file only catches broken downloads.
+/// </para>
 /// </summary>
 public static class Updates
 {
     public const string Repo = "valuex-creative/Windows-AI-Quota-Bar";
     public const string ReleasesUrl = "https://github.com/" + Repo + "/releases";
+
+    /// <summary>Public key that release installers must be signed with (SubjectPublicKeyInfo, base64).</summary>
+    public const string UpdatePublicKey =
+        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEobHZOnIGIf4U9SkDrsULGKsKVxq/QPOm4doeHvk2qpWztdcbCyYM47SYqzw6p3ZTUjVQ71SE0qc8mhlKfhqk5w==";
 
     // The shared client has a 25 s timeout; a 55 MB download needs longer.
     static readonly HttpClient Download = CreateDownloadClient();
@@ -53,16 +63,17 @@ public static class Updates
         var tag = r.Str("tag_name");
         var v = Parse(tag);
         if (v is null || v <= Current) return null;
-        string? setup = null, sha = null;
+        string? setup = null, sha = null, sig = null;
         if (r.Prop("assets") is { ValueKind: JsonValueKind.Array } assets)
             foreach (var a in assets.EnumerateArray())
             {
                 var name = a.Str("name") ?? "";
                 var url = a.Str("browser_download_url");
                 if (name.EndsWith(".exe.sha256", StringComparison.OrdinalIgnoreCase)) sha = url;
+                else if (name.EndsWith(".exe.sig", StringComparison.OrdinalIgnoreCase)) sig = url;
                 else if (name.Contains("Setup", StringComparison.OrdinalIgnoreCase) && name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) setup = url;
             }
-        return new UpdateInfo(v, tag!, r.Str("html_url") ?? ReleasesUrl, setup, sha, r.Str("body"), r.Date("published_at"));
+        return new UpdateInfo(v, tag!, r.Str("html_url") ?? ReleasesUrl, setup, sha, sig, r.Str("body"), r.Date("published_at"));
     }
 
     /// <summary>True when this copy was installed by the Setup (it can update itself); false for portable / dev copies.</summary>
@@ -70,17 +81,19 @@ public static class Updates
         File.Exists(Path.Combine(AppContext.BaseDirectory, "unins000.exe"));
 
     /// <summary>
-    /// Downloads the installer, checks it against the published SHA256 and starts it silently.
+    /// Downloads the installer, verifies its signature (and checksum) and starts it silently.
     /// The installer closes this app, upgrades in place and starts the new version.
     /// </summary>
     public static async Task InstallAsync(UpdateInfo u, IProgress<double>? progress, CancellationToken ct)
     {
         if (u.SetupUrl is null) throw new InvalidOperationException("This release has no installer.");
-        if (u.ShaUrl is null) throw new InvalidOperationException("This release has no checksum, so it was not installed automatically.");
-        if (!IsTrusted(u.SetupUrl) || !IsTrusted(u.ShaUrl)) throw new InvalidOperationException("Unexpected download location.");
+        if (u.SigUrl is null) throw new InvalidOperationException("This release is not signed, so it was not installed automatically. Download it from the release page instead.");
+        if (!IsTrusted(u.SetupUrl) || !IsTrusted(u.SigUrl) || (u.ShaUrl != null && !IsTrusted(u.ShaUrl)))
+            throw new InvalidOperationException("Unexpected download location.");
 
-        var expected = (await Retry(() => Download.GetStringAsync(u.ShaUrl, ct))).Trim().Split(' ', '\t', '\n', '\r')[0].ToLowerInvariant();
-        if (expected.Length != 64) throw new InvalidOperationException("Invalid checksum file.");
+        var signature = Convert.FromBase64String((await Retry(() => Download.GetStringAsync(u.SigUrl, ct))).Trim());
+        var expected = u.ShaUrl is null ? null
+            : (await Retry(() => Download.GetStringAsync(u.ShaUrl, ct))).Trim().Split(' ', '\t', '\n', '\r')[0].ToLowerInvariant();
 
         var dir = Path.Combine(Path.GetTempPath(), "WindowsAIQuotaBar-update");
         Directory.CreateDirectory(dir);
@@ -88,15 +101,36 @@ public static class Updates
 
         await Retry(() => DownloadFile(u.SetupUrl, file, progress, ct));
 
-        string actual;
-        await using (var fs = File.OpenRead(file)) actual = Convert.ToHexString(await SHA256.HashDataAsync(fs, ct)).ToLowerInvariant();
-        if (actual != expected)
-        {
-            try { File.Delete(file); } catch { }
-            throw new InvalidOperationException("Checksum mismatch: the download was discarded.");
-        }
+        // Keep the file open (read-only sharing) from verification until the installer has started,
+        // so it cannot be swapped in between.
+        using var hold = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var bytes = new byte[hold.Length];
+        await hold.ReadExactlyAsync(bytes, ct);
+
+        if (expected != null && Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant() != expected)
+            Fail("Checksum mismatch: the download was discarded.");
+        if (!VerifySignature(bytes, signature))
+            Fail("The update's signature is not valid, so it was not installed.");
 
         Process.Start(new ProcessStartInfo(file, "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS") { UseShellExecute = true });
+
+        void Fail(string message)
+        {
+            hold.Dispose();
+            try { File.Delete(file); } catch { }
+            throw new InvalidOperationException(message);
+        }
+    }
+
+    public static bool VerifySignature(byte[] data, byte[] signature)
+    {
+        try
+        {
+            using var key = ECDsa.Create();
+            key.ImportSubjectPublicKeyInfo(Convert.FromBase64String(UpdatePublicKey), out _);
+            return key.VerifyData(data, signature, HashAlgorithmName.SHA256);
+        }
+        catch (CryptographicException) { return false; }
     }
 
     /// <summary>Retries network failures (DNS hiccups, dropped connections) up to 3 times.</summary>
