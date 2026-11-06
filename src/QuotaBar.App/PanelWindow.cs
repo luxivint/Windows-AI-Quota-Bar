@@ -269,7 +269,20 @@ public sealed class PanelWindow : Window
                     g.Children.Add(badge);
                     content = g;
                 }
-                var tip = p.DisplayName + (p.Account is null ? "" : " — " + p.Account);
+                if (App.Instance.HealthOf(p.ProviderKind) is { } sh)
+                {
+                    var g2 = new Grid();
+                    g2.Children.Add(content);
+                    g2.Children.Add(new Border
+                    {
+                        Width = 9, Height = 9, CornerRadius = new CornerRadius(5), BorderBrush = Theme.Sidebar, BorderThickness = new Thickness(1.5),
+                        Background = sh.Health >= Health.Major ? Theme.Bad : Theme.Warn,
+                        HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, -3, -4, 0),
+                    });
+                    content = g2;
+                }
+                var tip = p.DisplayName + (p.Account is null ? "" : " — " + p.Account)
+                    + (App.Instance.HealthOf(p.ProviderKind) is { } th ? Environment.NewLine + "⚠ " + th.Description : "");
                 var item = SideItem(p.Id, content, tip);
                 if (p.Status != ProviderStatus.Ok) item.Opacity = 0.5;
                 _sidebarTop.Children.Add(item);
@@ -350,6 +363,7 @@ public sealed class PanelWindow : Window
                 inner.Children.Add(acc);
             }
 
+            if (App.Instance.HealthOf(p.ProviderKind) is { } health) inner.Children.Add(IncidentLine(health, compact: true));
             if (p.Status != ProviderStatus.Ok)
             {
                 var msg = Visuals.Label(p.Message ?? p.Status.ToString(), 12, p.Status == ProviderStatus.NeedsLogin ? Theme.Warn : Theme.Bad);
@@ -444,6 +458,7 @@ public sealed class PanelWindow : Window
         if (p.ProviderKind == "antigravity" && !p.IsActiveAccount && p.Account != null)
             links.Children.Add(Visuals.Chip(L.T("Make active", "Bu hesaba geç"), () => SwitchAntigravity(p.Account!), primary: true));
         sp.Children.Add(links);
+        if (App.Instance.HealthOf(p.ProviderKind) is { } incident) sp.Children.Add(IncidentLine(incident, compact: false));
 
         if (p.Status != ProviderStatus.Ok)
         {
@@ -526,6 +541,7 @@ public sealed class PanelWindow : Window
             sp.Children.Add(new Border { Height = 1, Background = Theme.Border, Margin = new Thickness(0, 18, 0, 8) });
             foreach (var i in p.Info) sp.Children.Add(TwoCol(i.Label, i.Value, margin: 3));
         }
+        if (p.ProviderKind == "claude" && App.Instance.Cost is { Last30: > 0 } cost) sp.Children.Add(CostSection(cost));
         if (p.Message != null && p.Status == ProviderStatus.Ok)
         {
             var m = Visuals.Label(p.Message, 12.5, Theme.Bad); m.Margin = new Thickness(0, 10, 0, 0);
@@ -535,6 +551,64 @@ public sealed class PanelWindow : Window
     }
 
     static string _chartRange = "cycle";
+
+    /// <summary>"What this would cost on the API": Claude Code logs priced at list rates.</summary>
+    static FrameworkElement CostSection(CostSummary c)
+    {
+        var sp = new StackPanel();
+        sp.Children.Add(new Border { Height = 1, Background = Theme.Border, Margin = new Thickness(0, 18, 0, 10) });
+        sp.Children.Add(Visuals.Label(L.T("API value of your Claude Code use", "Claude Code kullanımının API karşılığı"), 13.5, Theme.Text, FontWeights.SemiBold));
+        var grid = new System.Windows.Controls.Primitives.UniformGrid { Columns = 4, Margin = new Thickness(0, 8, 0, 4) };
+        foreach (var (label, value) in new[] { (L.T("Today", "Bugün"), c.Today), (L.T("7 days", "7 gün"), c.Last7), (L.T("This month", "Bu ay"), c.ThisMonth), (L.T("30 days", "30 gün"), c.Last30) })
+        {
+            var cell = new StackPanel();
+            cell.Children.Add(Visuals.Label(CostScan.Money(value), 15, Theme.Text, FontWeights.Bold));
+            cell.Children.Add(Visuals.Label(label, 11, Theme.SubText));
+            grid.Children.Add(cell);
+        }
+        sp.Children.Add(grid);
+        // 30 small bars, one per day.
+        var max = Math.Max(0.01, c.Daily.Max(d => d.Cost));
+        var bars = new System.Windows.Controls.Primitives.UniformGrid { Rows = 1, Height = 34, Margin = new Thickness(0, 6, 0, 2) };
+        foreach (var (day, cost) in c.Daily)
+            bars.Children.Add(new Border
+            {
+                Height = Math.Max(2, 34 * cost / max), VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(1, 0, 1, 0),
+                CornerRadius = new CornerRadius(2), Background = cost > 0 ? Visuals.Tint("claude", 220) : Theme.Track,
+                ToolTip = day.ToString("d MMM", System.Globalization.CultureInfo.CurrentUICulture) + ": " + CostScan.Money(cost),
+            });
+        sp.Children.Add(bars);
+        var models = string.Join(" · ", c.ByModelLast30.Where(m => m.Cost >= 0.01).Take(4).Select(m => $"{m.Model} {CostScan.Money(m.Cost)}"));
+        if (models.Length > 0)
+        {
+            var ml = Visuals.Label(L.T("30 days: ", "30 gün: ") + models, 11.5, Theme.SubText);
+            ml.TextWrapping = TextWrapping.Wrap; ml.Margin = new Thickness(0, 4, 0, 0);
+            sp.Children.Add(ml);
+        }
+        var note = Visuals.Label(L.T($"{CostScan.Tokens(c.TokensLast30)} tokens, {c.RequestsLast30:N0} requests. Estimated from local logs at API list prices; your subscription does not charge this.",
+            $"{CostScan.Tokens(c.TokensLast30)} token, {c.RequestsLast30:N0} istek. Yerel kayıtlardan API liste fiyatıyla tahmin; aboneliğin bunu ücretlendirmez."), 11, Theme.SubText);
+        note.TextWrapping = TextWrapping.Wrap; note.Opacity = 0.8; note.Margin = new Thickness(0, 4, 0, 0);
+        sp.Children.Add(note);
+        return sp;
+    }
+
+    /// <summary>"⚠ Partial outage: …" from the provider's status page; click opens the page.</summary>
+    static FrameworkElement IncidentLine(ServiceHealth h, bool compact)
+    {
+        var color = h.Health >= Health.Major ? Theme.Bad : Theme.Warn;
+        var text = (h.Health >= Health.Major ? L.T("Outage", "Kesinti") : L.T("Degraded", "Aksaklık")) + (h.Description.Length > 0 ? ": " + h.Description : "");
+        var t = Visuals.Label("⚠ " + text, compact ? 11.5 : 12.5, color);
+        t.TextWrapping = TextWrapping.Wrap; t.TextTrimming = TextTrimming.None;
+        var b = new Border
+        {
+            Child = t, Cursor = Cursors.Hand, ToolTip = L.T("Open the status page", "Durum sayfasını aç"),
+            Margin = compact ? new Thickness(0, 5, 0, 0) : new Thickness(0, 4, 0, 8),
+            Padding = compact ? new Thickness(0) : new Thickness(10, 7, 10, 7),
+            CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(compact ? 0 : 1), BorderBrush = color,
+        };
+        b.MouseLeftButtonDown += (_, e) => { e.Handled = true; App.OpenUrl(h.PageUrl); };
+        return b;
+    }
 
     /// <summary>History chart for one window, or a hint while there is not enough data yet.</summary>
     static UIElement Chart(ProviderSnapshot p, UsageWindow w, DateTimeOffset now)

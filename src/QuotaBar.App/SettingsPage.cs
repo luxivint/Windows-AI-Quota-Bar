@@ -38,6 +38,12 @@ public static class SettingsPage
         general.Children.Add(Row(L.T("Start with Windows", "Windows ile başlat"), L.T("Runs quietly in the tray", "Tepside sessizce çalışır"),
             Toggle(s.StartWithWindows, v => { s.StartWithWindows = v; app.SaveSettings(); })));
         general.Children.Add(Divider());
+        general.Children.Add(Row(L.T("Show service status", "Hizmet durumunu göster"), L.T("Checks the public status pages of Claude, OpenAI, GitHub and Google", "Claude, OpenAI, GitHub ve Google'ın herkese açık durum sayfalarını kontrol eder"),
+            Toggle(s.CheckServiceStatus, v => { s.CheckServiceStatus = v; app.SaveSettings(); })));
+        general.Children.Add(Divider());
+        general.Children.Add(Row(L.T("Estimate API cost", "API maliyetini hesapla"), L.T("Prices your local Claude Code logs at API rates. Only token counts are read; nothing is sent.", "Yerel Claude Code kayıtlarını API fiyatlarıyla hesaplar. Yalnız token sayıları okunur, hiçbir şey gönderilmez."),
+            Toggle(s.ScanLocalCost, v => { s.ScanLocalCost = v; app.SaveSettings(); _ = app.ScanCostAsync(); })));
+        general.Children.Add(Divider());
         general.Children.Add(Row(L.T("Shortcut", "Kısayol"), L.T("Opens the panel from anywhere", "Paneli her yerden açar"),
             Segmented(new List<(string, string)> { ("Ctrl+Alt+Q", "Ctrl+Alt+Q"), ("Ctrl+Shift+Q", "Ctrl+Shift+Q"), (L.T("Off", "Kapalı"), "") }, s.Hotkey,
                 v => { s.Hotkey = v; app.SaveSettings(); })));
@@ -65,6 +71,9 @@ public static class SettingsPage
             nt.Children.Add(Divider());
             nt.Children.Add(Row(L.T("Limit reset", "Limit sıfırlandı"), L.T("When a used limit is full again", "Kullanılmış bir limit yeniden dolunca"),
                 Toggle(al.Resets, v => { al.Resets = v; app.SaveSettings(); })));
+            nt.Children.Add(Divider());
+            nt.Children.Add(Row(L.T("Service incidents", "Hizmet kesintileri"), L.T("Major outages on the providers' status pages", "Sağlayıcıların durum sayfasındaki büyük kesintiler"),
+                Toggle(al.Incidents, v => { al.Incidents = v; app.SaveSettings(); })));
             nt.Children.Add(Divider());
             nt.Children.Add(Row(L.T("Unused quota", "Kullanılmayan kota"),
                 L.T($"{Alerts.UnusedMinLeft:0}%+ left {Alerts.UnusedLead.TotalHours:0} h before a weekly reset", $"Haftalık sıfırlamaya {Alerts.UnusedLead.TotalHours:0} sa kala %{Alerts.UnusedMinLeft:0}+ boşsa"),

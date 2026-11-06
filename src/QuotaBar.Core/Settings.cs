@@ -1,4 +1,4 @@
-namespace QuotaBar.Core;
+﻿namespace QuotaBar.Core;
 
 public sealed class AppSettings
 {
@@ -18,6 +18,10 @@ public sealed class AppSettings
     /// <summary>Global shortcut that opens the panel, e.g. "Ctrl+Alt+Q". Empty = off.</summary>
     public string Hotkey { get; set; } = "Ctrl+Alt+Q";
     public AlertSettings Alerts { get; set; } = new();
+    /// <summary>Poll the providers' public status pages for incidents.</summary>
+    public bool CheckServiceStatus { get; set; } = true;
+    /// <summary>Price local Claude Code logs at API rates (token counts only, nothing leaves the PC).</summary>
+    public bool ScanLocalCost { get; set; } = true;
     public Dictionary<string, bool> EnabledProviders { get; set; } = new();
     /// <summary>Extra OpenCode Go API keys (besides the ones read from OpenCode itself). Stored DPAPI-encrypted, here only labels.</summary>
     public List<string> OpenCodeExtraKeyLabels { get; set; } = new();
@@ -39,5 +43,8 @@ public sealed class AppSettings
     public bool IsEnabled(string kind) => !EnabledProviders.TryGetValue(kind, out var on) || on;
 
     public static AppSettings Load() => Json.Read<AppSettings>(AppPaths.Settings) ?? new AppSettings();
-    public void Save() { if (!ReadOnly) Json.WriteAtomic(AppPaths.Settings, this); }
+    public void Save() { if (!ReadOnly) { Json.WriteAtomic(AppPaths.Settings, this); LastSaved = DateTime.UtcNow; } }
+
+    /// <summary>When this process last wrote settings.json (to tell our own writes from `qb config`).</summary>
+    [System.Text.Json.Serialization.JsonIgnore] public static DateTime LastSaved { get; private set; }
 }

@@ -26,6 +26,16 @@ public partial class App : Application
     public string? UpdateStatus { get; private set; }
     public bool UpdateBusy { get; private set; }
     DateTimeOffset _nextUpdateCheck = DateTimeOffset.Now.AddSeconds(20);
+    DateTimeOffset _nextStatusCheck = DateTimeOffset.Now.AddSeconds(8);
+
+    /// <summary>Service health per provider kind, from the public status pages.</summary>
+    public Dictionary<string, ServiceHealth> Health { get; } = new();
+    public ServiceHealth? HealthOf(string kind) =>
+        Settings.CheckServiceStatus && Health.TryGetValue(kind, out var h) && h.Health is not (Core.Health.Unknown or Core.Health.Operational) ? h : null;
+
+    /// <summary>Claude Code usage priced at API rates, from local logs. Null until the first scan.</summary>
+    public CostSummary? Cost { get; private set; }
+    DateTimeOffset _nextCostScan = DateTimeOffset.Now.AddMinutes(5);
 
     readonly UsageService _service = new();
     readonly AlertState _alertState = AlertState.Load();
@@ -73,6 +83,7 @@ public partial class App : Application
         if (!Demo) StartupRegistration.Apply(Settings.StartWithWindows);
 
         Report = Demo ? DemoData.Report() : UsageService.LoadCached();
+        if (Demo) Health["codex"] = new ServiceHealth("codex", Core.Health.Minor, "Elevated error rates for Codex", "https://status.openai.com", DateTimeOffset.Now);
         LastRefresh = Report?.GeneratedAt;
 
         _panel = new PanelWindow();
@@ -84,15 +95,19 @@ public partial class App : Application
         _timer.Tick += (_, _) =>
         {
             if (DateTimeOffset.Now >= NextRefresh) _ = RefreshAsync();
+            if (DateTimeOffset.Now >= _nextCostScan) { _nextCostScan = DateTimeOffset.Now.AddMinutes(5); _ = ScanCostAsync(); }
+            if (DateTimeOffset.Now >= _nextStatusCheck) { _nextStatusCheck = DateTimeOffset.Now.AddMinutes(10); _ = CheckStatusAsync(); }
             if (DateTimeOffset.Now >= _nextUpdateCheck) { _nextUpdateCheck = DateTimeOffset.Now.AddHours(6); _ = CheckUpdatesAsync(false); }
         };
         _timer.Start();
+        if (!Demo) WatchSettingsFile();
         // Monitors plugged in or out: add/remove the widgets on secondary taskbars.
         SystemEvents.DisplaySettingsChanged += (_, _) => Dispatcher.InvokeAsync(async () => { await Task.Delay(3000); ApplyWidgetSetting(); });
         SystemEvents.PowerModeChanged += (_, pe) => { if (pe.Mode == PowerModes.Resume) Dispatcher.InvokeAsync(async () => { await Task.Delay(5000); await RefreshAsync(); }); };
 
         ReportChanged?.Invoke();
         _ = RefreshAsync();
+        _ = ScanCostAsync();
         if (e.Args.Contains("--updated"))
             _tray?.Notify(L.T("Updated", "Güncellendi"), L.T($"Windows AI Quota Bar is now {Updates.Current}.", $"Windows AI Quota Bar {Updates.Current} sürümüne güncellendi."));
         if (e.Args.Contains("--claude-login")) ClaudeLoginWindow.Open();
@@ -136,6 +151,46 @@ public partial class App : Application
             _pending = null;
             await RefreshAsync(next == "*" ? null : next);
         }
+    }
+
+    public async Task ScanCostAsync()
+    {
+        if (Demo) { Cost = DemoData.Cost(); ReportChanged?.Invoke(); return; }
+        if (!Settings.ScanLocalCost) { if (Cost != null) { Cost = null; ReportChanged?.Invoke(); } return; }
+        try
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            Cost = await CostScan.RunAsync();
+            Log($"cost scan took {sw.ElapsedMilliseconds} ms");
+            ReportChanged?.Invoke();
+        }
+        catch (Exception ex) { Log("cost: " + ex.Message); }
+    }
+
+    async Task CheckStatusAsync()
+    {
+        if (Demo || !Settings.CheckServiceStatus || Report is null) return;
+        try
+        {
+            var kinds = Report.Providers.Where(p => p.Status != ProviderStatus.Disabled).Select(p => p.ProviderKind).ToList();
+            var results = await Task.Run(() => ServiceStatus.CheckAsync(kinds, CancellationToken.None));
+            var changed = false;
+            foreach (var h in results)
+            {
+                if (h.Health == Core.Health.Unknown && Health.ContainsKey(h.Kind)) continue; // keep the last known state on network errors
+                Health.TryGetValue(h.Kind, out var old);
+                if (old?.Health != h.Health || old?.Description != h.Description) changed = true;
+                Health[h.Kind] = h;
+                var name = Report.Providers.FirstOrDefault(p => p.ProviderKind == h.Kind)?.DisplayName ?? h.Kind;
+                if (Settings.Alerts.Enabled && Settings.Alerts.Incidents && !Settings.Alerts.Muted.Contains(h.Kind)
+                    && h.Health >= Core.Health.Major && (old is null || old.Health < Core.Health.Major))
+                    _tray?.Notify(L.T($"{name}: service problem", $"{name}: hizmet sorunu"), h.Description);
+                if (old is { Health: >= Core.Health.Major } && h.Health == Core.Health.Operational && Settings.Alerts.Enabled && Settings.Alerts.Incidents)
+                    _tray?.Notify(L.T($"{name} is back", $"{name} düzeldi"), L.T("All systems operational.", "Tüm sistemler çalışıyor."));
+            }
+            if (changed) ReportChanged?.Invoke();
+        }
+        catch (Exception ex) { Log("status: " + ex.Message); }
     }
 
     /// <summary>Looks for a newer GitHub release. manual = triggered from Settings (always reports a result).</summary>
@@ -253,6 +308,39 @@ public partial class App : Application
             _widgets.Add(w);
             w.Show();
         }
+    }
+
+    FileSystemWatcher? _settingsWatcher;
+    DispatcherTimer? _settingsReload;
+
+    /// <summary>`qb config set …` edits settings.json while the app runs: reload it instead of overwriting it later.</summary>
+    void WatchSettingsFile()
+    {
+        _settingsReload = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+        _settingsReload.Tick += (_, _) =>
+        {
+            _settingsReload.Stop();
+            if (DateTime.UtcNow - AppSettings.LastSaved < TimeSpan.FromSeconds(2)) return; // our own write
+            var fresh = AppSettings.Load();
+            Settings = fresh;
+            Log("settings reloaded (changed outside the app)");
+            StartupRegistration.Apply(Settings.StartWithWindows);
+            ApplyWidgetSetting();
+            if (_hotkey != null) HotkeyError = _hotkey.Set(Settings.Hotkey);
+            NextRefresh = (LastRefresh ?? DateTimeOffset.Now).AddMinutes(Math.Max(1, Settings.RefreshMinutes));
+            SettingsChanged?.Invoke();
+            ReportChanged?.Invoke();
+            _ = RefreshAsync();
+        };
+        _settingsWatcher = new FileSystemWatcher(AppPaths.Data, "settings.json")
+        {
+            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
+            EnableRaisingEvents = true,
+        };
+        FileSystemEventHandler h = (_, _) => Dispatcher.InvokeAsync(() => { _settingsReload.Stop(); _settingsReload.Start(); });
+        _settingsWatcher.Changed += h;
+        _settingsWatcher.Created += h;
+        _settingsWatcher.Renamed += (s, e) => h(s, e);
     }
 
     public void TestNotification() =>

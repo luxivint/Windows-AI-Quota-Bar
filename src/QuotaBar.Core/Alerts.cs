@@ -22,6 +22,8 @@ public sealed class AlertSettings
     public bool RunOut { get; set; } = true;
     public bool Resets { get; set; } = true;
     public bool Unused { get; set; } = true;
+    /// <summary>Notify when a provider's status page reports a major outage.</summary>
+    public bool Incidents { get; set; } = true;
     /// <summary>Provider kinds that never notify ("claude", "codex", ...).</summary>
     public List<string> Muted { get; set; } = new();
 }

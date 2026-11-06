@@ -87,6 +87,22 @@ public static class DemoData
         };
     }
     /// <summary>Plausible history for the demo charts: usage grows in bursts during the day and drops at each reset.</summary>
+    public static CostSummary Cost()
+    {
+        var now = DateTimeOffset.Now;
+        var today = DateOnly.FromDateTime(now.LocalDateTime);
+        var daily = Enumerable.Range(0, 30).Select(i =>
+        {
+            var d = today.AddDays(-29 + i);
+            var weekend = d.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
+            return (d, weekend ? 1.8 + i % 3 : 9 + 6 * Math.Sin(i * 0.9) + i * 0.35);
+        }).ToList();
+        double Sum(int days) => daily.Skip(30 - days).Sum(x => x.Item2);
+        var month = daily.Where(x => x.d.Month == today.Month).Sum(x => x.Item2);
+        return new CostSummary(daily[^1].Item2, Sum(7), month, Sum(30), 412_000_000, 3_870,
+            new List<(string, double)> { ("Opus 5.5", Sum(30) * 0.82), ("Sonnet 5.5", Sum(30) * 0.16), ("Haiku 5.5", Sum(30) * 0.02) }, daily, [], now);
+    }
+
     public static List<HistoryPoint> History(string providerId, UsageWindow w, DateTimeOffset from, DateTimeOffset to)
     {
         var now = DateTimeOffset.Now;

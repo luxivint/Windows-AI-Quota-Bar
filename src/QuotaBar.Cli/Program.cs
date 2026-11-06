@@ -36,6 +36,33 @@ try
         case "mcp":
             await Mcp.Run();
             return 0;
+        case "config":
+            return await Config.Run(argList.Skip(1).ToList(), json);
+        case "cost":
+        {
+            var c = await CostScan.RunAsync();
+            if (json)
+            {
+                Console.WriteLine(JsonSerializer.Serialize(new
+                {
+                    currency = "USD", basis = "Anthropic API list prices, from local Claude Code logs",
+                    today = Math.Round(c.Today, 2), last7Days = Math.Round(c.Last7, 2), thisMonth = Math.Round(c.ThisMonth, 2), last30Days = Math.Round(c.Last30, 2),
+                    tokensLast30Days = c.TokensLast30, requestsLast30Days = c.RequestsLast30,
+                    byModelLast30Days = c.ByModelLast30.Select(m => new { model = m.Model, cost = Math.Round(m.Cost, 2) }),
+                    daily = c.Daily.Select(d => new { day = d.Day.ToString("yyyy-MM-dd"), cost = Math.Round(d.Cost, 2) }),
+                    unpricedModels = c.UnpricedModels,
+                }, Json.Options));
+                return 0;
+            }
+            Console.WriteLine("Claude Code at API prices (estimate from local logs)");
+            Console.WriteLine($"  Today        {CostScan.Money(c.Today)}");
+            Console.WriteLine($"  Last 7 days  {CostScan.Money(c.Last7)}");
+            Console.WriteLine($"  This month   {CostScan.Money(c.ThisMonth)}");
+            Console.WriteLine($"  Last 30 days {CostScan.Money(c.Last30)}  (" + c.RequestsLast30.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + $" requests, {CostScan.Tokens(c.TokensLast30)} tokens)");
+            foreach (var m in c.ByModelLast30.Take(5)) Console.WriteLine($"    {m.Model,-12} {CostScan.Money(m.Cost)}");
+            if (c.UnpricedModels.Count > 0) Console.WriteLine("  No price for: " + string.Join(", ", c.UnpricedModels));
+            return 0;
+        }
         case "help":
         case "--help":
         case "-h":
@@ -46,6 +73,15 @@ try
                   qb accounts                                  List Antigravity accounts (* = active)
                   qb switch <email>                            Switch the active Antigravity account
                   qb mcp                                       Run as an MCP server (stdio) for Claude Code etc.
+                  qb cost [--json]                             Claude Code usage priced at API rates (from local logs)
+
+                  qb config providers [--json]                 List providers, whether they are shown, and added keys
+                  qb config enable|disable <provider>          Show or hide a provider
+                  qb config set-key <provider> --stdin [--label NAME]
+                                                               Test an API key read from stdin, then store it encrypted
+                  qb config remove-key <provider> [label]      Remove an added key
+                  qb config get [setting]                      Show settings (refresh, hotkey, widget-style, alerts, status)
+                  qb config set <setting> <value>              Change a setting; the running app picks it up
                 """);
             return 0;
         default:
@@ -227,4 +263,140 @@ static class Mcp
         return $"Active Antigravity account is now {email}. Running agy sessions must be restarted.";
     }
 
+}
+
+static class Config
+{
+    static readonly string[] BuiltIn = UsageService.BuiltIn;
+
+    static string Canon(string p)
+    {
+        var k = p.ToLowerInvariant() switch
+        {
+            "claude" or "anthropic" => "claude",
+            "codex" or "chatgpt" or "openai" => "codex",
+            "antigravity" or "agy" => "antigravity",
+            "opencode" or "opencode-go" or "go" => "opencode-go",
+            "github" or "copilot" => "copilot",
+            var x => x,
+        };
+        if (!BuiltIn.Contains(k) && KeyProviders.Find(k) is null)
+            throw new ArgumentException($"Unknown provider '{p}'. Known: {string.Join(", ", BuiltIn.Concat(KeyProviders.Catalog.Select(d => d.Kind)))}");
+        return k;
+    }
+
+    public static async Task<int> Run(List<string> a, bool json)
+    {
+        string? Opt(string name) { var i = a.IndexOf(name); if (i < 0 || i + 1 >= a.Count) return null; var v = a[i + 1]; a.RemoveRange(i, 2); return v; }
+        bool Has(string name) { var i = a.IndexOf(name); if (i < 0) return false; a.RemoveAt(i); return true; }
+        var s = AppSettings.Load();
+        var sub = a.Count > 0 ? a[0].ToLowerInvariant() : "providers";
+        switch (sub)
+        {
+            case "providers":
+            {
+                var rows = BuiltIn.Select(k => new { kind = k, name = k, shown = s.IsEnabled(k), keys = Array.Empty<string>() })
+                    .Concat(KeyProviders.Catalog.Select(d => new
+                    {
+                        kind = d.Kind, name = d.Name, shown = s.IsEnabled(d.Kind),
+                        keys = s.KeyAccounts.Where(x => x.Kind == d.Kind).Select(x => x.Label).ToArray(),
+                    })).ToList();
+                if (json) { Console.WriteLine(JsonSerializer.Serialize(rows, Json.Options)); return 0; }
+                foreach (var r in rows)
+                    Console.WriteLine($"{(r.shown ? "on " : "off")}  {r.kind,-12} {(r.keys.Length > 0 ? string.Join(", ", r.keys) : BuiltIn.Contains(r.kind) ? "(automatic)" : "")}");
+                return 0;
+            }
+            case "enable":
+            case "disable":
+            {
+                if (a.Count < 2) { Console.Error.WriteLine($"usage: qb config {sub} <provider>"); return 2; }
+                var k = Canon(a[1]);
+                s.EnabledProviders[k] = sub == "enable";
+                s.Save();
+                Console.WriteLine($"{k}: {(sub == "enable" ? "shown" : "hidden")}");
+                return 0;
+            }
+            case "set-key":
+            {
+                var label = Opt("--label");
+                var stdin = Has("--stdin");
+                var inline = Opt("--key");
+                if (a.Count < 2 || (!stdin && inline is null)) { Console.Error.WriteLine("usage: qb config set-key <provider> --stdin [--label NAME]"); return 2; }
+                var k = Canon(a[1]);
+                if (KeyProviders.Find(k) is not { } def) { Console.Error.WriteLine($"{k} does not use API keys."); return 2; }
+                var key = (stdin ? await Console.In.ReadToEndAsync() : inline!).Trim();
+                if (key.Length == 0) { Console.Error.WriteLine("No key on stdin."); return 2; }
+                var snap = await KeyProviders.Test(k, key, CancellationToken.None);
+                if (snap.Status != ProviderStatus.Ok) { Console.Error.WriteLine($"Key rejected: {snap.Message}"); return 1; }
+                var acc = KeyProviders.Add(s, k, label ?? def.Name, key);
+                s.EnabledProviders[k] = true;
+                s.Save();
+                Console.WriteLine($"Added {def.Name} \"{acc.Label}\" (stored encrypted for this Windows user).");
+                return 0;
+            }
+            case "remove-key":
+            {
+                if (a.Count < 2) { Console.Error.WriteLine("usage: qb config remove-key <provider> [label]"); return 2; }
+                var k = Canon(a[1]);
+                var matches = s.KeyAccounts.Where(x => x.Kind == k && (a.Count < 3 || x.Label.Equals(a[2], StringComparison.OrdinalIgnoreCase))).ToList();
+                if (matches.Count == 0) { Console.Error.WriteLine("No matching key."); return 1; }
+                if (matches.Count > 1) { Console.Error.WriteLine("Several keys match; add the label: " + string.Join(", ", matches.Select(m => m.Label))); return 2; }
+                KeyProviders.Remove(s, matches[0].Id);
+                Console.WriteLine($"Removed {matches[0].Label}.");
+                return 0;
+            }
+            case "get":
+            {
+                var all = new Dictionary<string, string>
+                {
+                    ["refresh"] = s.RefreshMinutes.ToString(),
+                    ["hotkey"] = s.Hotkey.Length == 0 ? "off" : s.Hotkey,
+                    ["widget"] = s.ShowTaskbarWidget ? "on" : "off",
+                    ["widget-style"] = s.WidgetStyle,
+                    ["widget-auto"] = s.WidgetAuto ? "on" : "off",
+                    ["all-monitors"] = s.WidgetAllMonitors ? "on" : "off",
+                    ["alerts"] = s.Alerts.Enabled ? "on" : "off",
+                    ["alert-thresholds"] = string.Join(",", s.Alerts.Thresholds),
+                    ["status"] = s.CheckServiceStatus ? "on" : "off",
+                    ["cost-scan"] = s.ScanLocalCost ? "on" : "off",
+                    ["start-with-windows"] = s.StartWithWindows ? "on" : "off",
+                };
+                if (a.Count > 1)
+                {
+                    if (!all.TryGetValue(a[1], out var v)) { Console.Error.WriteLine("Unknown setting. Known: " + string.Join(", ", all.Keys)); return 2; }
+                    Console.WriteLine(v);
+                }
+                else if (json) Console.WriteLine(JsonSerializer.Serialize(all, Json.Options));
+                else foreach (var kv in all) Console.WriteLine($"{kv.Key,-20} {kv.Value}");
+                return 0;
+            }
+            case "set":
+            {
+                if (a.Count < 3) { Console.Error.WriteLine("usage: qb config set <setting> <value>"); return 2; }
+                var v = a[2];
+                bool On() => v.ToLowerInvariant() switch { "on" or "true" or "1" or "yes" => true, "off" or "false" or "0" or "no" => false, _ => throw new ArgumentException("Use on or off.") };
+                switch (a[1])
+                {
+                    case "refresh": s.RefreshMinutes = Math.Clamp(int.Parse(v), 1, 120); break;
+                    case "hotkey": s.Hotkey = v.Equals("off", StringComparison.OrdinalIgnoreCase) ? "" : v; break;
+                    case "widget": s.ShowTaskbarWidget = On(); break;
+                    case "widget-style": s.WidgetStyle = v is "rings" or "bars" ? v : throw new ArgumentException("Use rings or bars."); break;
+                    case "widget-auto": s.WidgetAuto = On(); break;
+                    case "all-monitors": s.WidgetAllMonitors = On(); break;
+                    case "alerts": s.Alerts.Enabled = On(); break;
+                    case "alert-thresholds": s.Alerts.Thresholds = v.Split(',').Select(x => Math.Clamp(int.Parse(x.Trim()), 1, 100)).Distinct().OrderBy(x => x).ToList(); break;
+                    case "status": s.CheckServiceStatus = On(); break;
+                    case "cost-scan": s.ScanLocalCost = On(); break;
+                    case "start-with-windows": s.StartWithWindows = On(); break;
+                    default: Console.Error.WriteLine("Unknown setting. See `qb config get`."); return 2;
+                }
+                s.Save();
+                Console.WriteLine($"{a[1]} = {v}");
+                return 0;
+            }
+            default:
+                Console.Error.WriteLine("Unknown config command. Try `qb help`.");
+                return 2;
+        }
+    }
 }

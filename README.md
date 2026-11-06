@@ -48,7 +48,7 @@ Two live gauges next to the clock. Pick **rings** or **bars**, choose which two 
 <td width="50%" valign="top">
 
 ### 📊 Tray panel
-Every provider on one page, with a detail page for each one: session, weekly and per-model windows, reset countdowns and **pace** (*"8% ahead of pace, runs out in 2d 4h"*). **History charts** show this cycle against an even-use line, or the last 7 / 30 days. Open it from anywhere with **Ctrl+Alt+Q**, or **pin** it to keep it on screen.
+Every provider on one page, with a detail page for each one: session, weekly and per-model windows, reset countdowns and **pace** (*"8% ahead of pace, runs out in 2d 4h"*). **History charts** show this cycle against an even-use line, or the last 7 / 30 days. The Claude page also shows what your **Claude Code use would cost at API prices**, from the local logs. Open it from anywhere with **Ctrl+Alt+Q**, or **pin** it to keep it on screen.
 
 </td>
 </tr>
@@ -56,7 +56,7 @@ Every provider on one page, with a detail page for each one: session, weekly and
 <td valign="top">
 
 ### 🔔 Usage alerts
-Windows notifications when a limit hits 80% or 95%, when it will run out within the hour at your current pace, when it resets, and when a weekly limit is about to reset with quota left unused. Mute any provider.
+Windows notifications when a limit hits 80% or 95%, when it will run out within the hour at your current pace, when it resets, and when a weekly limit is about to reset with quota left unused. Also when Claude, OpenAI, GitHub or Google report an outage on their status page. Mute any provider.
 
 </td>
 <td valign="top">
@@ -170,6 +170,9 @@ qb codex --json             # one provider, machine-readable
 qb --cached                 # last snapshot from the running app (no network)
 qb accounts                 # Antigravity accounts (* = active)
 qb switch you@example.com   # switch the active Antigravity account
+qb cost                     # Claude Code use priced at API rates (local logs)
+qb config get               # settings; `qb config set refresh 5` changes them in the running app
+qb config providers         # show / hide providers, add or remove API keys (`set-key <p> --stdin`)
 ```
 
 ## Privacy & security
