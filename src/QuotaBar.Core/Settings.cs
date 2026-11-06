@@ -11,6 +11,13 @@ public sealed class AppSettings
     public List<string> WidgetMetrics { get; set; } = new() { "claude|five_hour", "codex|primary" };
     /// <summary>Horizontal offset (px) of the widget from the tray area; user can drag it.</summary>
     public int WidgetOffset { get; set; } = 0;
+    /// <summary>Show the limits closest to running out instead of <see cref="WidgetMetrics"/>.</summary>
+    public bool WidgetAuto { get; set; } = false;
+    /// <summary>Also show the widget on the taskbars of other monitors.</summary>
+    public bool WidgetAllMonitors { get; set; } = false;
+    /// <summary>Global shortcut that opens the panel, e.g. "Ctrl+Alt+Q". Empty = off.</summary>
+    public string Hotkey { get; set; } = "Ctrl+Alt+Q";
+    public AlertSettings Alerts { get; set; } = new();
     public Dictionary<string, bool> EnabledProviders { get; set; } = new();
     /// <summary>Extra OpenCode Go API keys (besides the ones read from OpenCode itself). Stored DPAPI-encrypted, here only labels.</summary>
     public List<string> OpenCodeExtraKeyLabels { get; set; } = new();

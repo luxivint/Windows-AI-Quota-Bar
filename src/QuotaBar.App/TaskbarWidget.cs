@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -25,8 +25,32 @@ public sealed class TaskbarWidget : Window
     int _dragStartOffset, _count = 2;
     bool _dragging, _hover;
 
-    public TaskbarWidget()
+    public const string Primary = "main";
+    /// <summary>"main" for the primary taskbar, "mon:x,y" (monitor origin) for a secondary one.</summary>
+    public string TaskbarId { get; }
+
+    /// <summary>Ids of the taskbars on other monitors (Shell_SecondaryTrayWnd).</summary>
+    public static List<string> SecondaryTaskbars()
     {
+        var ids = new List<string>();
+        for (var h = Native.FindWindowEx(IntPtr.Zero, IntPtr.Zero, "Shell_SecondaryTrayWnd", null); h != IntPtr.Zero;
+             h = Native.FindWindowEx(IntPtr.Zero, h, "Shell_SecondaryTrayWnd", null))
+            if (Native.MonitorOrigin(h) is { } o) ids.Add($"mon:{o.X},{o.Y}");
+        return ids;
+    }
+
+    IntPtr FindTray()
+    {
+        if (TaskbarId == Primary) return Native.FindWindow("Shell_TrayWnd", null);
+        for (var h = Native.FindWindowEx(IntPtr.Zero, IntPtr.Zero, "Shell_SecondaryTrayWnd", null); h != IntPtr.Zero;
+             h = Native.FindWindowEx(IntPtr.Zero, h, "Shell_SecondaryTrayWnd", null))
+            if (Native.MonitorOrigin(h) is { } o && $"mon:{o.X},{o.Y}" == TaskbarId) return h;
+        return IntPtr.Zero;
+    }
+
+    public TaskbarWidget(string taskbarId = Primary)
+    {
+        TaskbarId = taskbarId;
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
         Background = new SolidColorBrush(Color.FromArgb(1, 0, 0, 0)); // hit-testable but invisible
@@ -46,7 +70,7 @@ public sealed class TaskbarWidget : Window
             _hwnd = new WindowInteropHelper(this).Handle;
             var ex = Native.GetWindowLong(_hwnd, Native.GWL_EXSTYLE);
             Native.SetWindowLong(_hwnd, Native.GWL_EXSTYLE, ex | Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE);
-            _tray = Native.FindWindow("Shell_TrayWnd", null);
+            _tray = FindTray();
             if (_tray != IntPtr.Zero) new WindowInteropHelper(this).Owner = _tray; // stays above the taskbar
             Reposition();
         };
@@ -245,8 +269,13 @@ public sealed class TaskbarWidget : Window
     void Reposition()
     {
         if (_hwnd == IntPtr.Zero) return;
-        if (_tray == IntPtr.Zero || !Native.GetWindowRect(_tray, out _)) _tray = Native.FindWindow("Shell_TrayWnd", null);
-        if (_tray == IntPtr.Zero || !Native.GetWindowRect(_tray, out var bar)) return;
+        if (_tray == IntPtr.Zero || !Native.GetWindowRect(_tray, out _)) _tray = FindTray();
+        if (_tray == IntPtr.Zero || !Native.GetWindowRect(_tray, out var bar))
+        {
+            // A secondary taskbar went away (monitor unplugged, explorer restarting): stay hidden until it is back.
+            if (Native.IsWindowVisible(_hwnd)) Native.ShowWindow(_hwnd, 0);
+            return;
+        }
         HookShell();
 
         // Hidden together with the taskbar (full-screen game/video, auto-hide); back as soon as the taskbar is.
@@ -259,8 +288,8 @@ public sealed class TaskbarWidget : Window
         bool horizontal = bar.Width > bar.Height;
         int h = horizontal ? bar.Height : (int)(40 * dpi);
 
-        // Right edge = left edge of the notification area (tray icons + clock).
-        int rightEdge = bar.Right - (int)(260 * dpi);
+        // Right edge = left edge of the notification area (tray icons + clock). Secondary taskbars only have the clock.
+        int rightEdge = bar.Right - (int)((TaskbarId == Primary ? 260 : 120) * dpi);
         var notify = Native.FindWindowEx(_tray, IntPtr.Zero, "TrayNotifyWnd", null);
         if (notify != IntPtr.Zero && Native.GetWindowRect(notify, out var nr) && nr.Width > 0) rightEdge = nr.Left;
         int x = rightEdge - w - (int)(App.Instance.Settings.WidgetOffset * dpi) - (int)(6 * dpi);

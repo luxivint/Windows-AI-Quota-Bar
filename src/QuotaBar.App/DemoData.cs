@@ -1,4 +1,4 @@
-using QuotaBar.Core.Providers;
+﻿using QuotaBar.Core.Providers;
 
 namespace QuotaBar.App;
 
@@ -85,5 +85,37 @@ public static class DemoData
                 },
             },
         };
+    }
+    /// <summary>Plausible history for the demo charts: usage grows in bursts during the day and drops at each reset.</summary>
+    public static List<HistoryPoint> History(string providerId, UsageWindow w, DateTimeOffset from, DateTimeOffset to)
+    {
+        var now = DateTimeOffset.Now;
+        var rnd = new Random(providerId.GetHashCode() ^ w.Key.GetHashCode());
+        var len = TimeSpan.FromSeconds(w.WindowSeconds ?? 86400);
+        var reset = w.ResetsAt ?? now.AddHours(12);
+        var list = new List<HistoryPoint>();
+        // Walk cycles backwards from the current one.
+        for (var end = reset; end - len > from.AddDays(-1); end -= len)
+        {
+            var start = end - len;
+            var current = end == reset;
+            var peak = current ? w.UsedPercent : 35 + rnd.NextDouble() * 60;
+            var stop = current ? now : end;
+            double used = 0;
+            var steps = Math.Max(2, (int)((stop - start).TotalMinutes / 20));
+            for (int i = 0; i <= steps; i++)
+            {
+                var t = start + (stop - start) * i / steps;
+                if (t < from.AddHours(-1) || t > to) continue;
+                var hour = t.ToLocalTime().Hour;
+                var active = hour is >= 9 and <= 23;
+                var target = peak * i / steps;
+                if (active || current) used = Math.Max(used, Math.Min(peak, target + (rnd.NextDouble() - 0.5) * 4));
+                if (current && i == steps) used = w.UsedPercent;
+                list.Add(new HistoryPoint(t.ToUnixTimeSeconds(), providerId, w.Key, Math.Round(Math.Max(0, used), 1), end.ToUnixTimeSeconds()));
+            }
+        }
+        list.Sort((a, b) => a.Time.CompareTo(b.Time));
+        return list;
     }
 }

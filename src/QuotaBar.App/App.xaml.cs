@@ -28,9 +28,13 @@ public partial class App : Application
     DateTimeOffset _nextUpdateCheck = DateTimeOffset.Now.AddSeconds(20);
 
     readonly UsageService _service = new();
+    readonly AlertState _alertState = AlertState.Load();
     TrayIcon? _tray;
     PanelWindow? _panel;
-    TaskbarWidget? _widget;
+    readonly List<TaskbarWidget> _widgets = new();
+    GlobalHotkey? _hotkey;
+    /// <summary>Why the shortcut could not be registered (shown in Settings), or null.</summary>
+    public string? HotkeyError { get; private set; }
     DispatcherTimer? _timer;
     Mutex? _mutex;
     string? _pending;
@@ -74,6 +78,7 @@ public partial class App : Application
         _panel = new PanelWindow();
         _tray = new TrayIcon();
         ApplyWidgetSetting();
+        if (!Demo) { _hotkey = new GlobalHotkey(TogglePanel); HotkeyError = _hotkey.Set(Settings.Hotkey); }
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
         _timer.Tick += (_, _) =>
@@ -82,6 +87,8 @@ public partial class App : Application
             if (DateTimeOffset.Now >= _nextUpdateCheck) { _nextUpdateCheck = DateTimeOffset.Now.AddHours(6); _ = CheckUpdatesAsync(false); }
         };
         _timer.Start();
+        // Monitors plugged in or out: add/remove the widgets on secondary taskbars.
+        SystemEvents.DisplaySettingsChanged += (_, _) => Dispatcher.InvokeAsync(async () => { await Task.Delay(3000); ApplyWidgetSetting(); });
         SystemEvents.PowerModeChanged += (_, pe) => { if (pe.Mode == PowerModes.Resume) Dispatcher.InvokeAsync(async () => { await Task.Delay(5000); await RefreshAsync(); }); };
 
         ReportChanged?.Invoke();
@@ -90,6 +97,7 @@ public partial class App : Application
             _tray?.Notify(L.T("Updated", "Güncellendi"), L.T($"Windows AI Quota Bar is now {Updates.Current}.", $"Windows AI Quota Bar {Updates.Current} sürümüne güncellendi."));
         if (e.Args.Contains("--claude-login")) ClaudeLoginWindow.Open();
         else if (e.Args.Contains("--settings")) ShowPanel("settings");
+        else if (e.Args.FirstOrDefault(x => x.StartsWith("--page=")) is { } page) ShowPanel(page[7..]);
         else if (!e.Args.Contains("--background")) ShowPanel();
     }
 
@@ -102,7 +110,17 @@ public partial class App : Application
         try
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
+            var previous = Report;
             Report = await Task.Run(() => _service.RefreshAsync(Settings, onlyKind));
+            var report = Report;
+            var alerts = await Task.Run(() =>
+            {
+                try { History.Record(report); } catch (Exception ex) { Log("history: " + ex.Message); }
+                var found = Alerts.Evaluate(previous, report, Settings.Alerts, _alertState, DateTimeOffset.Now);
+                if (found.Count > 0) _alertState.Save();
+                return found;
+            });
+            ShowAlerts(alerts);
             Log($"refresh {(onlyKind ?? "all")} took {sw.ElapsedMilliseconds} ms");
             LastRefresh = DateTimeOffset.Now;
         }
@@ -183,21 +201,63 @@ public partial class App : Application
         }
     }
 
+    /// <summary>One balloon per refresh: a single alert in full, several as a short list.</summary>
+    void ShowAlerts(List<Alert> alerts)
+    {
+        if (alerts.Count == 0 || _tray is null) return;
+        var now = DateTimeOffset.Now;
+        (string title, string text) Format(Alert a)
+        {
+            var name = $"{Visuals.ShortName(a.Provider)} · {PanelWindow.WindowLabel(a.Window.Label)}";
+            var reset = a.Window.ResetsAt is { } r ? L.T("resets in ", "sıfırlanma: ") + L.Until(r, now) : "";
+            return a.Kind switch
+            {
+                AlertKind.Threshold => (L.T($"{name}: {a.Value:0}% used", $"{name}: %{a.Value:0} kullanıldı"),
+                                        L.T($"{a.Window.LeftPercent:0}% left", $"%{a.Window.LeftPercent:0} kaldı") + (reset == "" ? "" : " · " + reset)),
+                AlertKind.RunOut => (L.T($"{name} runs out in {L.Until(a.At!.Value, now)}", $"{name} {L.Until(a.At!.Value, now)} içinde bitecek"),
+                                     L.T("At this pace it runs out before it resets", "Bu hızla sıfırlanmadan önce bitiyor") + (reset == "" ? "" : " (" + reset + ")")),
+                AlertKind.Reset => (L.T($"{name} has reset", $"{name} sıfırlandı"), L.T("Full quota available again.", "Kotanın tamamı yeniden kullanılabilir.")),
+                _ => (L.T($"{name}: {a.Value:0}% unused", $"{name}: %{a.Value:0} kullanılmadı"),
+                      L.T($"Resets in {L.Until(a.At!.Value, now)}. Use it or lose it.", $"{L.Until(a.At!.Value, now)} sonra sıfırlanıyor, kullanmazsan gidecek.")),
+            };
+        }
+        if (alerts.Count == 1) { var (t, x) = Format(alerts[0]); _tray.Notify(t, x); }
+        else _tray.Notify(L.T($"{alerts.Count} usage alerts", $"{alerts.Count} kullanım uyarısı"), string.Join(Environment.NewLine, alerts.Take(4).Select(a => Format(a).title)));
+        foreach (var a in alerts) Log($"alert {a.Kind} {a.Provider.Id}|{a.Window.Key} {a.Value:0}");
+    }
+
     public void SaveSettings()
     {
         Settings.Save();
         if (!Demo) StartupRegistration.Apply(Settings.StartWithWindows);
         ApplyWidgetSetting();
+        if (_hotkey != null) HotkeyError = _hotkey.Set(Settings.Hotkey);
         NextRefresh = (LastRefresh ?? DateTimeOffset.Now).AddMinutes(Math.Max(1, Settings.RefreshMinutes));
         SettingsChanged?.Invoke();
         ReportChanged?.Invoke();
     }
 
-    void ApplyWidgetSetting()
+    /// <summary>One widget on the main taskbar, plus one per secondary taskbar when enabled.</summary>
+    public void ApplyWidgetSetting()
     {
-        if (Settings.ShowTaskbarWidget && _widget == null) { _widget = new TaskbarWidget(); _widget.Show(); }
-        else if (!Settings.ShowTaskbarWidget && _widget != null) { _widget.Close(); _widget = null; }
+        var wanted = new List<string>();
+        if (Settings.ShowTaskbarWidget)
+        {
+            wanted.Add(TaskbarWidget.Primary);
+            if (Settings.WidgetAllMonitors) wanted.AddRange(TaskbarWidget.SecondaryTaskbars());
+        }
+        foreach (var w in _widgets.Where(w => !wanted.Contains(w.TaskbarId)).ToList()) { w.Close(); _widgets.Remove(w); }
+        foreach (var id in wanted.Where(id => _widgets.All(w => w.TaskbarId != id)))
+        {
+            var w = new TaskbarWidget(id);
+            _widgets.Add(w);
+            w.Show();
+        }
     }
+
+    public void TestNotification() =>
+        _tray?.Notify(L.T("Notifications work", "Bildirimler çalışıyor"),
+            L.T("You'll see alerts like this when a limit needs your attention.", "Bir limit dikkatini gerektirdiğinde böyle uyarılar göreceksin."));
 
     public void TogglePanel()
     {
@@ -216,7 +276,8 @@ public partial class App : Application
     public void Quit()
     {
         _tray?.Dispose();
-        _widget?.Close();
+        foreach (var w in _widgets) w.Close();
+        _hotkey?.Dispose();
         Shutdown();
     }
 

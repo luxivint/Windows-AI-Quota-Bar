@@ -1,4 +1,4 @@
-using System.Net.Http.Headers;
+﻿using System.Net.Http.Headers;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -14,7 +14,9 @@ public static class AppPaths
     {
         get
         {
-            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "QuotaBar");
+            // QUOTABAR_DATA: alternative data folder (tests, portable use).
+            var dir = Environment.GetEnvironmentVariable("QUOTABAR_DATA") is { Length: > 0 } custom ? custom
+                : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "QuotaBar");
             Directory.CreateDirectory(dir);
             return dir;
         }

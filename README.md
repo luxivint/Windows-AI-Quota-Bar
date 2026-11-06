@@ -42,13 +42,27 @@ Paying for Claude Max, ChatGPT Plus, a couple of Google AI plans and an API key 
 <td width="50%" valign="top">
 
 ### 🟢 Taskbar widget
-Two live gauges next to the clock. Pick **rings** or **bars**, choose which two limits to show, and drag it where you like. It hides itself while a full-screen game or video is running.
+Two live gauges next to the clock. Pick **rings** or **bars**, choose which two limits to show (or let it pick the ones closest to running out), and drag it where you like. Works on every monitor's taskbar and hides together with the taskbar during full-screen games and videos.
 
 </td>
 <td width="50%" valign="top">
 
 ### 📊 Tray panel
-Every provider on one page, with a detail page for each one: session, weekly and per-model windows, reset countdowns and **pace** (*"8% ahead of pace, runs out in 2d 4h"*). **Pin** it to keep it on screen.
+Every provider on one page, with a detail page for each one: session, weekly and per-model windows, reset countdowns and **pace** (*"8% ahead of pace, runs out in 2d 4h"*). **History charts** show this cycle against an even-use line, or the last 7 / 30 days. Open it from anywhere with **Ctrl+Alt+Q**, or **pin** it to keep it on screen.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+### 🔔 Usage alerts
+Windows notifications when a limit hits 80% or 95%, when it will run out within the hour at your current pace, when it resets, and when a weekly limit is about to reset with quota left unused. Mute any provider.
+
+</td>
+<td valign="top">
+
+### ⌨️ Always one keystroke away
+**Ctrl+Alt+Q** (or Ctrl+Shift+Q) opens the panel from any app. Escape closes it.
 
 </td>
 </tr>

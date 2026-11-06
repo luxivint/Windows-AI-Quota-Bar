@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -37,6 +37,74 @@ public static class SettingsPage
         general.Children.Add(Divider());
         general.Children.Add(Row(L.T("Start with Windows", "Windows ile başlat"), L.T("Runs quietly in the tray", "Tepside sessizce çalışır"),
             Toggle(s.StartWithWindows, v => { s.StartWithWindows = v; app.SaveSettings(); })));
+        general.Children.Add(Divider());
+        general.Children.Add(Row(L.T("Shortcut", "Kısayol"), L.T("Opens the panel from anywhere", "Paneli her yerden açar"),
+            Segmented(new List<(string, string)> { ("Ctrl+Alt+Q", "Ctrl+Alt+Q"), ("Ctrl+Shift+Q", "Ctrl+Shift+Q"), (L.T("Off", "Kapalı"), "") }, s.Hotkey,
+                v => { s.Hotkey = v; app.SaveSettings(); })));
+        if (app.HotkeyError is { } hkErr)
+        {
+            var e = Hint(hkErr); e.Foreground = Theme.Warn; e.Margin = new Thickness(0, 4, 0, 0);
+            general.Children.Add(e);
+        }
+
+        // ---- Notifications --------------------------------------------------------------------------------
+        var al = s.Alerts;
+        var nt = Card(sp, "", L.T("Notifications", "Bildirimler"));
+        nt.Children.Add(Row(L.T("Usage alerts", "Kullanım uyarıları"), L.T("Windows notifications about your limits", "Limitlerin hakkında Windows bildirimleri"),
+            Toggle(al.Enabled, v => { al.Enabled = v; app.SaveSettings(); panel.Navigate("settings"); })));
+        if (al.Enabled)
+        {
+            nt.Children.Add(Divider());
+            string Pct(string v) => L.T(v + "%", "%" + v);
+            nt.Children.Add(Row(L.T("Alert at", "Uyarı eşiği"), L.T("Share of the limit used", "Limitin kullanılan kısmı"),
+                Segmented(new List<(string, string)> { (Pct("50/80/95"), "50,80,95"), (Pct("80/95"), "80,95"), (Pct("90"), "90") }, string.Join(",", al.Thresholds),
+                    v => { al.Thresholds = v.Split(',').Select(int.Parse).ToList(); app.SaveSettings(); })));
+            nt.Children.Add(Divider());
+            nt.Children.Add(Row(L.T("About to run out", "Bitmek üzere"), L.T("At the current pace, within the hour", "Mevcut hızla bir saat içinde"),
+                Toggle(al.RunOut, v => { al.RunOut = v; app.SaveSettings(); })));
+            nt.Children.Add(Divider());
+            nt.Children.Add(Row(L.T("Limit reset", "Limit sıfırlandı"), L.T("When a used limit is full again", "Kullanılmış bir limit yeniden dolunca"),
+                Toggle(al.Resets, v => { al.Resets = v; app.SaveSettings(); })));
+            nt.Children.Add(Divider());
+            nt.Children.Add(Row(L.T("Unused quota", "Kullanılmayan kota"),
+                L.T($"{Alerts.UnusedMinLeft:0}%+ left {Alerts.UnusedLead.TotalHours:0} h before a weekly reset", $"Haftalık sıfırlamaya {Alerts.UnusedLead.TotalHours:0} sa kala %{Alerts.UnusedMinLeft:0}+ boşsa"),
+                Toggle(al.Unused, v => { al.Unused = v; app.SaveSettings(); })));
+            var kinds = app.Report?.Providers.Where(p => p.Status != ProviderStatus.Disabled).Select(p => p.ProviderKind).Distinct().ToList() ?? new();
+            if (kinds.Count > 0)
+            {
+                nt.Children.Add(Divider());
+                var t = Visuals.Label(L.T("Notify for", "Bildirim gönderilecekler"), 13); t.Margin = new Thickness(0, 2, 0, 8);
+                nt.Children.Add(t);
+                var wrap = new WrapPanel();
+                foreach (var k in kinds)
+                {
+                    var on = !al.Muted.Contains(k);
+                    var name = app.Report!.Providers.First(p => p.ProviderKind == k).DisplayName.Split(' ')[0];
+                    var content = new StackPanel { Orientation = Orientation.Horizontal };
+                    var ic = Visuals.Icon(k, 12); ic.Margin = new Thickness(0, 0, 5, 0); ic.Opacity = on ? 1 : 0.45;
+                    content.Children.Add(ic);
+                    content.Children.Add(Visuals.Label(name, 11.5, on ? Theme.Text : Theme.SubText, on ? FontWeights.SemiBold : FontWeights.Normal));
+                    var chip = new Border
+                    {
+                        Child = content, Padding = new Thickness(8, 3, 9, 4), Margin = new Thickness(0, 0, 5, 5), CornerRadius = new CornerRadius(12), Cursor = Cursors.Hand,
+                        BorderThickness = new Thickness(1), BorderBrush = on ? new SolidColorBrush(Visuals.BrandColor(k)) : Theme.Border,
+                        Background = on ? Visuals.Tint(k, (byte)(Theme.Dark ? 36 : 22)) : Brushes.Transparent,
+                    };
+                    var kind = k;
+                    chip.MouseLeftButtonDown += (_, e) =>
+                    {
+                        e.Handled = true;
+                        if (!al.Muted.Remove(kind)) al.Muted.Add(kind);
+                        app.SaveSettings();
+                        panel.Navigate("settings");
+                    };
+                    wrap.Children.Add(chip);
+                }
+                nt.Children.Add(wrap);
+            }
+            nt.Children.Add(Divider());
+            nt.Children.Add(Buttons(Visuals.Chip(L.T("Send a test notification", "Deneme bildirimi gönder"), () => app.TestNotification())));
+        }
 
         // ---- Taskbar -------------------------------------------------------------------------------------
         var tb = Card(sp, "", L.T("Taskbar", "Görev çubuğu"));
@@ -47,10 +115,22 @@ public static class SettingsPage
             Segmented(new List<(string, string)> { (L.T("Rings", "Halkalar"), "rings"), (L.T("Bars", "Çubuklar"), "bars") }, s.WidgetStyle,
                 v => { s.WidgetStyle = v; app.SaveSettings(); })));
         tb.Children.Add(Divider());
-        var pickTitle = Visuals.Label(L.T("Show up to two limits", "En fazla iki limit seç"), 13);
-        pickTitle.Margin = new Thickness(0, 2, 0, 8);
-        tb.Children.Add(pickTitle);
-        tb.Children.Add(MetricPicker(panel));
+        tb.Children.Add(Row(L.T("Pick automatically", "Otomatik seç"), L.T("Show the limits closest to running out", "Bitmeye en yakın limitleri göster"),
+            Toggle(s.WidgetAuto, v => { s.WidgetAuto = v; app.SaveSettings(); panel.Navigate("settings"); })));
+        if (System.Windows.Forms.Screen.AllScreens.Length > 1 || s.WidgetAllMonitors)
+        {
+            tb.Children.Add(Divider());
+            tb.Children.Add(Row(L.T("All monitors", "Tüm ekranlar"), L.T("Also on the taskbars of other screens", "Diğer ekranların görev çubuğunda da"),
+                Toggle(s.WidgetAllMonitors, v => { s.WidgetAllMonitors = v; app.SaveSettings(); })));
+        }
+        if (!s.WidgetAuto)
+        {
+            tb.Children.Add(Divider());
+            var pickTitle = Visuals.Label(L.T("Show up to two limits", "En fazla iki limit seç"), 13);
+            pickTitle.Margin = new Thickness(0, 2, 0, 8);
+            tb.Children.Add(pickTitle);
+            tb.Children.Add(MetricPicker(panel));
+        }
 
         // ---- Connected accounts -------------------------------------------------------------------------
         var acc = Card(sp, "", L.T("Connected accounts", "Bağlı hesaplar"));
@@ -604,7 +684,7 @@ public static class SettingsPage
     }
 
     /// <summary>Pill-shaped segmented control.</summary>
-    static FrameworkElement Segmented(List<(string text, string value)> options, string current, Action<string> changed, string suffix = "")
+    public static FrameworkElement Segmented(List<(string text, string value)> options, string current, Action<string> changed, string suffix = "")
     {
         var outer = new Border { CornerRadius = new CornerRadius(9), Background = Theme.Sidebar, BorderBrush = Theme.Border, BorderThickness = new Thickness(1), Padding = new Thickness(2) };
         var sp = new StackPanel { Orientation = Orientation.Horizontal };

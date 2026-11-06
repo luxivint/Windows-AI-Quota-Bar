@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -481,6 +481,17 @@ public sealed class PanelWindow : Window
             sp.Children.Add(new Border { Height = 1, Background = Theme.Border, Margin = new Thickness(0, 10, 0, 0) });
         }
 
+        if (p.Status == ProviderStatus.Ok && p.Windows.Count > 0)
+        {
+            var rangeRow = new DockPanel { Margin = new Thickness(0, 12, 0, 0) };
+            var seg = SettingsPage.Segmented(new List<(string, string)> { (L.T("This cycle", "Bu dönem"), "cycle"), (L.T("7 days", "7 gün"), "7d"), (L.T("30 days", "30 gün"), "30d") },
+                _chartRange, v => { _chartRange = v; Rebuild(); });
+            DockPanel.SetDock(seg, Dock.Right);
+            rangeRow.Children.Add(seg);
+            rangeRow.Children.Add(new TextBlock { Text = L.T("History", "Geçmiş"), FontSize = 12.5, Foreground = Theme.SubText, VerticalAlignment = VerticalAlignment.Center });
+            sp.Children.Add(rangeRow);
+        }
+
         foreach (var w in p.Windows)
         {
             var block = new StackPanel { Margin = new Thickness(0, 14, 0, 0) };
@@ -506,6 +517,7 @@ public sealed class PanelWindow : Window
                 var det = Visuals.Label(w.Detail, 11.5, Theme.SubText); det.Opacity = 0.8; det.Margin = new Thickness(0, 2, 0, 0);
                 block.Children.Add(det);
             }
+            if (p.Status == ProviderStatus.Ok) block.Children.Add(Chart(p, w, now));
             sp.Children.Add(block);
         }
 
@@ -520,6 +532,25 @@ public sealed class PanelWindow : Window
             sp.Children.Add(m);
         }
         return sp;
+    }
+
+    static string _chartRange = "cycle";
+
+    /// <summary>History chart for one window, or a hint while there is not enough data yet.</summary>
+    static UIElement Chart(ProviderSnapshot p, UsageWindow w, DateTimeOffset now)
+    {
+        var cycle = _chartRange == "cycle" && w.WindowSeconds is > 0 && w.ResetsAt != null;
+        DateTimeOffset from, to;
+        if (cycle) { to = w.ResetsAt!.Value.ToLocalTime(); from = to.AddSeconds(-w.WindowSeconds!.Value); }
+        else { to = now; from = now.AddDays(_chartRange == "30d" ? -30 : 7 * -1); }
+        var pts = App.Demo ? DemoData.History(p.Id, w, from, to) : History.Load(p.Id, w.Key, from.AddHours(-1));
+        if (pts.Count < 2)
+        {
+            var hint = Visuals.Label(L.T("The chart fills in as readings are collected.", "Grafik, veriler toplandıkça dolar."), 11.5, Theme.SubText);
+            hint.Opacity = 0.75; hint.Margin = new Thickness(0, 6, 0, 0);
+            return hint;
+        }
+        return new UsageChart(w, pts, p.ProviderKind, cycle, from, to, now);
     }
 
     static UIElement Wrap(UIElement e) => new StackPanel { Orientation = Orientation.Horizontal, Children = { e }, Margin = new Thickness(0, 0, 0, 6) };

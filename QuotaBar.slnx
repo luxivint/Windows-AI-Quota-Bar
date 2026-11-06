@@ -8,4 +8,7 @@
   <Folder Name="/src/QuotaBar.Cli/">
     <Project Path="src/QuotaBar.Cli/qb.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/QuotaBar.Tests/QuotaBar.Tests.csproj" />
+  </Folder>
 </Solution>

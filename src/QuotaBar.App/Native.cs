@@ -101,6 +101,13 @@ internal static class Native
     [DllImport("user32.dll")] public static extern bool UnhookWinEvent(IntPtr hook);
     public const uint EVENT_SYSTEM_FOREGROUND = 0x0003, EVENT_OBJECT_SHOW = 0x8002, EVENT_OBJECT_REORDER = 0x8004,
         EVENT_OBJECT_LOCATIONCHANGE = 0x800B, WINEVENT_OUTOFCONTEXT = 0, WINEVENT_SKIPOWNPROCESS = 2;
+    /// <summary>Top-left corner of the monitor a window is on.</summary>
+    public static System.Drawing.Point? MonitorOrigin(IntPtr h)
+    {
+        var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+        return GetMonitorInfo(MonitorFromWindow(h, 2), ref mi) ? new System.Drawing.Point(mi.rcMonitor.Left, mi.rcMonitor.Top) : null;
+    }
+
     public static uint ProcessOf(IntPtr h) { GetWindowThreadProcessId(h, out var pid); return pid; }
 
     [StructLayout(LayoutKind.Sequential)] public struct MARGINS { public int L, R, T, B; }

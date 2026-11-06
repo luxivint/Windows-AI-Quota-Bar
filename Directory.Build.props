@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <Version>0.1.5</Version>
+    <Version>0.2.0</Version>
     <Product>Windows AI Quota Bar</Product>
     <Company>valuex-creative</Company>
     <Copyright>Copyright (c) 2026 Erkan Havuz. MIT License.</Copyright>

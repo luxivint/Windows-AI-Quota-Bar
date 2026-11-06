@@ -35,9 +35,21 @@ public static class Metrics
             }
     }
 
+    /// <summary>
+    /// The two limits that need attention most, from different providers: a projected run-out first
+    /// (soonest), then the least left.
+    /// </summary>
+    public static List<Metric> Urgent(UsageReport? r, DateTimeOffset now) =>
+        All(r).Where(m => m.Provider.IsActiveAccount || m.Provider.ProviderKind != "antigravity")
+              .OrderBy(m => m.Window.ProjectedRunOut(now) is { } ro ? (ro - now).TotalHours : double.MaxValue)
+              .ThenBy(m => m.Window.LeftPercent)
+              .GroupBy(m => m.Provider.Id).Select(g => g.First())
+              .Take(2).ToList();
+
     /// <summary>Configured widget metrics, falling back to the first sensible ones.</summary>
     public static List<Metric> ForWidget(UsageReport? r, AppSettings s)
     {
+        if (s.WidgetAuto) return Urgent(r, DateTimeOffset.Now);
         var list = s.WidgetMetrics.Select(id => Resolve(r, id)).OfType<Metric>().Take(2).ToList();
         if (list.Count == 0) list = All(r).GroupBy(m => m.Provider.Id).Select(g => g.First()).Take(2).ToList();
         return list;

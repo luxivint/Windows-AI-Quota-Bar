@@ -52,6 +52,8 @@ Everything lives under `%LOCALAPPDATA%\QuotaBar`:
 | `settings.json` | Preferences and key labels (no keys) | Plain text |
 | `snapshot.json` | Last usage numbers, plan names and account e-mails | Plain text |
 | `quotabar.log` | Timings and errors (no tokens) | Plain text |
+| `history\*.jsonl` | Usage percentages and reset times per limit, for the charts (kept 4 months) | Plain text |
+| `alerts.json` | Which notifications were already shown in the current cycle | Plain text |
 | `webview\` | The embedded browser profile used for claude.ai | Like a browser profile |
 
 To erase everything, uninstall and answer **Yes** when the uninstaller asks whether to delete your data. You can also delete the folder yourself.
@@ -77,14 +79,14 @@ Update signing key fingerprint (SHA-256 of the public key):
 **1. Checksum.** Compare the hash with the `.sha256` file on the release and with the SHA-256 that GitHub shows next to each asset:
 
 ```powershell
-Get-FileHash .\WindowsAIQuotaBar-Setup-0.1.5.exe -Algorithm SHA256
+Get-FileHash .\WindowsAIQuotaBar-Setup-0.2.0.exe -Algorithm SHA256
 ```
 
 **2. Signature** (PowerShell 7):
 
 ```powershell
 $pub = 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEobHZOnIGIf4U9SkDrsULGKsKVxq/QPOm4doeHvk2qpWztdcbCyYM47SYqzw6p3ZTUjVQ71SE0qc8mhlKfhqk5w=='
-$file = '.\WindowsAIQuotaBar-Setup-0.1.5.exe'
+$file = '.\WindowsAIQuotaBar-Setup-0.2.0.exe'
 $k = [System.Security.Cryptography.ECDsa]::Create()
 $read = 0; $k.ImportSubjectPublicKeyInfo([Convert]::FromBase64String($pub), [ref]$read)
 $k.VerifyData([IO.File]::ReadAllBytes($file), [Convert]::FromBase64String((Get-Content "$file.sig" -Raw).Trim()), 'SHA256')   # True = genuine
