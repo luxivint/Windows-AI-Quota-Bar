@@ -41,6 +41,7 @@ def unmatched():
 
 
 def main():
+    sys.stdout.reconfigure(encoding='utf-8')  # Windows consoles default to a code page without "ı", "ü", …
     pairs = extract()
     for f, text in unmatched():
         print(f'not a literal ({f}): {text}')
