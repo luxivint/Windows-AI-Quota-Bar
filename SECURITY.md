@@ -79,6 +79,8 @@ Update signing key fingerprint (SHA-256 of the public key):
 
 ## Verify a release yourself
 
+From 0.5.0 on, releases are built by GitHub Actions and carry a build-provenance attestation: `gh attestation verify <file> --repo valuex-creative/Windows-AI-Quota-Bar` shows which workflow run and commit produced the file. See [docs/code-signing.md](docs/code-signing.md).
+
 **1. Checksum.** Compare the hash with the `.sha256` file on the release and with the SHA-256 that GitHub shows next to each asset:
 
 ```powershell

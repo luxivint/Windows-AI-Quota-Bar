@@ -15,6 +15,7 @@
   <img src="https://img.shields.io/badge/.NET-10-512BD4?style=flat-square&logo=dotnet&logoColor=white" alt=".NET 10">
   <img src="https://img.shields.io/badge/MCP-server%20included-d97757?style=flat-square" alt="MCP server included">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square" alt="MIT license"></a>
+  <a href="https://github.com/valuex-creative/Windows-AI-Quota-Bar/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/valuex-creative/Windows-AI-Quota-Bar/ci.yml?branch=main&style=flat-square&label=tests" alt="Tests"></a>
 </p>
 
 <p align="center">

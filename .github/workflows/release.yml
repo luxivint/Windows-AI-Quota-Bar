@@ -1,0 +1,80 @@
+# Push a tag like v0.5.0 to build the release on GitHub's runners.
+# The workflow attests where each file was built (SLSA build provenance) and creates a DRAFT release.
+# The maintainer then runs tools/sign-release.ps1, which checks the attestation, adds the update
+# signature (.sig, key never leaves the maintainer's PC) and publishes the release.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write       # create the draft release
+      id-token: write       # sign the attestation
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Version matches the tag
+        shell: pwsh
+        run: |
+          $v = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.Version
+          if ("v$v" -ne "${{ github.ref_name }}") { throw "Directory.Build.props has $v, tag is ${{ github.ref_name }}" }
+          "VERSION=$v" >> $env:GITHUB_ENV
+
+      - name: Tests
+        run: dotnet test tests/QuotaBar.Tests -c Release
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+
+      - name: Build
+        shell: pwsh
+        run: ./build-release.ps1 -NoSign
+
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            artifacts/WindowsAIQuotaBar-Setup-*.exe
+            artifacts/WindowsAIQuotaBar-*-portable.zip
+
+      - name: Draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = "release-notes/$env:VERSION.md"
+          if (-not (Test-Path $notes)) { $notes = $null }
+          $files = Get-ChildItem artifacts -File | Where-Object { $_.Name -match '\.(exe|sha256|zip)$' } | ForEach-Object { $_.FullName }
+          $ghArgs = @("release", "create", "${{ github.ref_name }}", "--draft", "--title", "${{ github.ref_name }}") + $files
+          if ($notes) { $ghArgs += @("--notes-file", $notes) } else { $ghArgs += @("--notes", "Draft") }
+          gh @ghArgs
+
+      # Authenticode signing through SignPath Foundation (after approval):
+      # 1. Add the repository secret SIGNPATH_API_TOKEN and fill in the ids below.
+      # 2. Upload the unsigned installer as an artifact, submit it, then replace artifacts/<setup>.exe
+      #    with the signed file BEFORE the checksum, attestation and draft steps (move this block up).
+      # - uses: actions/upload-artifact@v4
+      #   id: unsigned
+      #   with: { name: unsigned-setup, path: artifacts/WindowsAIQuotaBar-Setup-*.exe }
+      # - uses: signpath/github-action-submit-signing-request@v1
+      #   with:
+      #     api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+      #     organization-id: '<org id>'
+      #     project-slug: 'Windows-AI-Quota-Bar'
+      #     signing-policy-slug: 'release-signing'
+      #     github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+      #     wait-for-completion: true
+      #     output-artifact-directory: artifacts/signed

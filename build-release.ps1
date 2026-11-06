@@ -1,7 +1,9 @@
 # Builds the release: a self-contained app folder, a portable zip, the Setup.exe installer
 # and its .sha256 (the in-app updater refuses an installer without a matching checksum).
-# Usage: .\build-release.ps1 [-Version 0.1.2]   (default: <Version> in Directory.Build.props)
-param([string]$Version = "")
+# Usage: .\build-release.ps1 [-Version 0.1.2] [-NoSign]   (default: <Version> in Directory.Build.props)
+# Releases are built by GitHub Actions (.github/workflows/release.yml) with -NoSign: CI has no key.
+# tools/sign-release.ps1 then adds the update signature to the CI-built installer.
+param([string]$Version = "", [switch]$NoSign)
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
@@ -28,6 +30,8 @@ if ($LASTEXITCODE) { throw "installer build failed" }
 $setup = "WindowsAIQuotaBar-Setup-$Version.exe"
 $hash = (Get-FileHash "artifacts\$setup" -Algorithm SHA256).Hash.ToLowerInvariant()
 [IO.File]::WriteAllText("$PSScriptRoot\artifacts\$setup.sha256", "$hash  $setup`n")
+
+if ($NoSign) { Get-ChildItem artifacts -File | ForEach-Object { "{0,-50} {1,8:N1} MB" -f $_.Name, ($_.Length / 1MB) }; return }
 
 # Sign the installer with the maintainer's update key (DPAPI-protected on this PC, never in the repo).
 # Installed copies refuse an update whose signature does not match the public key compiled into the app.

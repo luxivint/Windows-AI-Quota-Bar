@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Tests
+        run: dotnet test tests/QuotaBar.Tests -c Release --logger "console;verbosity=normal"
+
+      - name: Translations complete
+        run: python tools/extract-strings.py
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+
+      - name: Build installer and portable zip (unsigned)
+        shell: pwsh
+        run: ./build-release.ps1 -NoSign
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-ai-quota-bar-${{ github.sha }}
+          path: |
+            artifacts/*.exe
+            artifacts/*.sha256
+            artifacts/*.zip
+          retention-days: 14
