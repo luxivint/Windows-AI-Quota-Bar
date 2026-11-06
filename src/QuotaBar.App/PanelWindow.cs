@@ -61,6 +61,7 @@ public sealed class PanelWindow : Window
         _footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         _footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         _footLeft.FontSize = 12.5; _footRight.FontSize = 12.5;
+        _footLeft.TextTrimming = _footRight.TextTrimming = TextTrimming.CharacterEllipsis;
         _footLeft.VerticalAlignment = _footRight.VerticalAlignment = VerticalAlignment.Center;
         _footer.Children.Add(_footLeft);
         Grid.SetColumn(_footRight, 1); _footer.Children.Add(_footRight);
@@ -203,7 +204,7 @@ public sealed class PanelWindow : Window
         g.ColumnDefinitions.Add(new ColumnDefinition());
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        text.Children.Add(Visuals.Label(L.T($"Version {u.Version} is available", $"{u.Version} sürümü hazır"), 12.5, Theme.Text, FontWeights.SemiBold));
+        text.Children.Add(Visuals.Label(L.F("Version {0} is available", "{0} sürümü hazır", u.Version), 12.5, Theme.Text, FontWeights.SemiBold));
         var sub = Visuals.Label(app.UpdateStatus ?? L.T("See what's new", "Yenilikleri gör"), 11.5, app.UpdateStatus is null ? Theme.Accent : Theme.SubText);
         if (app.UpdateStatus is null) { sub.Cursor = Cursors.Hand; sub.MouseLeftButtonDown += (_, e) => { e.Handled = true; App.OpenUrl(u.PageUrl); }; }
         text.Children.Add(sub);
@@ -235,12 +236,7 @@ public sealed class PanelWindow : Window
         _footRight.Margin = new Thickness(8, 0, 6, 0);
     }
 
-    static string Ago(DateTimeOffset t, DateTimeOffset now)
-    {
-        var s = Fmt.Ago(t, now);
-        if (!L.Tr) return s;
-        return s.Replace("just now", "az önce").Replace("m ago", " dk önce").Replace("h ago", " sa önce").Replace("d ago", " gün önce");
-    }
+    static string Ago(DateTimeOffset t, DateTimeOffset now) => L.Ago(t, now);
 
     void BuildSidebar()
     {
@@ -421,11 +417,7 @@ public sealed class PanelWindow : Window
         VerticalAlignment = VerticalAlignment.Center, Child = Visuals.Label(plan, 12, Theme.Text),
     };
 
-    public static string WindowLabel(string label)
-    {
-        if (!L.Tr) return label;
-        return label.Replace("Session", "Oturum").Replace("Weekly", "Haftalık").Replace("Monthly", "Aylık").Replace("Daily", "Günlük").Replace("-hour", " saatlik");
-    }
+    public static string WindowLabel(string label) => L.Window(label);
 
     UIElement BuildProvider(ProviderSnapshot p)
     {
@@ -585,8 +577,8 @@ public sealed class PanelWindow : Window
             ml.TextWrapping = TextWrapping.Wrap; ml.Margin = new Thickness(0, 4, 0, 0);
             sp.Children.Add(ml);
         }
-        var note = Visuals.Label(L.T($"{CostScan.Tokens(c.TokensLast30)} tokens, {c.RequestsLast30:N0} requests. Estimated from local logs at API list prices; your subscription does not charge this.",
-            $"{CostScan.Tokens(c.TokensLast30)} token, {c.RequestsLast30:N0} istek. Yerel kayıtlardan API liste fiyatıyla tahmin; aboneliğin bunu ücretlendirmez."), 11, Theme.SubText);
+        var note = Visuals.Label(L.F("{0} tokens, {1:N0} requests. Estimated from local logs at API list prices; your subscription does not charge this.",
+            "{0} token, {1:N0} istek. Yerel kayıtlardan API liste fiyatıyla tahmin; aboneliğin bunu ücretlendirmez.", CostScan.Tokens(c.TokensLast30), c.RequestsLast30), 11, Theme.SubText);
         note.TextWrapping = TextWrapping.Wrap; note.Opacity = 0.8; note.Margin = new Thickness(0, 4, 0, 0);
         sp.Children.Add(note);
         return sp;

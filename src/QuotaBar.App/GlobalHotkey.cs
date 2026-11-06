@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System.Windows.Input;
 using System.Windows.Interop;
 
@@ -48,9 +48,9 @@ public sealed class GlobalHotkey : IDisposable
                     break;
             }
         }
-        if (vk == 0) return L.T($"\"{text}\" is not a valid shortcut.", $"\"{text}\" geçerli bir kısayol değil.");
+        if (vk == 0) return L.F("\"{0}\" is not a valid shortcut.", "\"{0}\" geçerli bir kısayol değil.", text);
         _registered = RegisterHotKey(_src.Handle, Id, mods, vk);
-        return _registered ? null : L.T($"{text} is already used by another app.", $"{text} başka bir uygulama tarafından kullanılıyor.");
+        return _registered ? null : L.F("{0} is already used by another app.", "{0} başka bir uygulama tarafından kullanılıyor.", text);
     }
 
     public void Dispose()

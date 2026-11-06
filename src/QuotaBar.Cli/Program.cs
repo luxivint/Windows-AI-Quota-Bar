@@ -82,6 +82,8 @@ try
                   qb config remove-key <provider> [label]      Remove an added key
                   qb config get [setting]                      Show settings (refresh, hotkey, widget-style, alerts, status)
                   qb config set <setting> <value>              Change a setting; the running app picks it up
+                  qb config export [file]                      Write a settings backup (no API keys)
+                  qb config import <file|->                    Restore a settings backup; keeps the keys on this PC
                 """);
             return 0;
         default:
@@ -345,6 +347,21 @@ static class Config
                 Console.WriteLine($"Removed {matches[0].Label}.");
                 return 0;
             }
+            case "export":
+            {
+                var text = SettingsTransfer.Export(s);
+                if (a.Count > 1) { File.WriteAllText(a[1], text); Console.WriteLine($"Settings written to {a[1]} (no API keys)."); }
+                else Console.WriteLine(text);
+                return 0;
+            }
+            case "import":
+            {
+                if (a.Count < 2) { Console.Error.WriteLine("usage: qb config import <file>   (use - for stdin)"); return 2; }
+                var text = a[1] == "-" ? await Console.In.ReadToEndAsync() : File.ReadAllText(a[1]);
+                SettingsTransfer.Import(text, s).Save();
+                Console.WriteLine("Settings imported. API keys on this PC were kept.");
+                return 0;
+            }
             case "get":
             {
                 var all = new Dictionary<string, string>
@@ -359,6 +376,9 @@ static class Config
                     ["alert-thresholds"] = string.Join(",", s.Alerts.Thresholds),
                     ["status"] = s.CheckServiceStatus ? "on" : "off",
                     ["cost-scan"] = s.ScanLocalCost ? "on" : "off",
+                    ["language"] = s.Language,
+                    ["widget-color"] = s.WidgetColor,
+                    ["widget-size"] = s.WidgetSize,
                     ["start-with-windows"] = s.StartWithWindows ? "on" : "off",
                 };
                 if (a.Count > 1)
@@ -387,6 +407,9 @@ static class Config
                     case "alert-thresholds": s.Alerts.Thresholds = v.Split(',').Select(x => Math.Clamp(int.Parse(x.Trim()), 1, 100)).Distinct().OrderBy(x => x).ToList(); break;
                     case "status": s.CheckServiceStatus = On(); break;
                     case "cost-scan": s.ScanLocalCost = On(); break;
+                    case "language": s.Language = v is "auto" or "en" or "tr" or "de" or "es" or "fr" or "pt" or "ja" or "zh" ? v : throw new ArgumentException("Use auto, en, tr, de, es, fr, pt, ja or zh."); break;
+                    case "widget-color": s.WidgetColor = v is "brand" or "status" or "mono" or "accent" ? v : throw new ArgumentException("Use brand, status, mono or accent."); break;
+                    case "widget-size": s.WidgetSize = v is "compact" or "normal" or "large" ? v : throw new ArgumentException("Use compact, normal or large."); break;
                     case "start-with-windows": s.StartWithWindows = On(); break;
                     default: Console.Error.WriteLine("Unknown setting. See `qb config get`."); return 2;
                 }

@@ -90,7 +90,7 @@ Paste an API key for OpenRouter, GitHub Copilot, z.ai, Kimi, MiniMax, DeepSeek o
 <td valign="top">
 
 ### 🎨 Feels native, stays current
-Windows 11 Mica, rounded corners, follows light and dark mode. The UI is in English and Turkish. **Updates itself**: it shows when a new version is out and installs it in one click.
+Windows 11 Mica, rounded corners, follows light and dark mode. The widget comes in four color schemes and three sizes. **8 languages**: English, Türkçe, Deutsch, Español, Français, Português, 日本語, 简体中文. **Back up your settings** to a file (API keys are never included). **Updates itself**: it shows when a new version is out and installs it in one click.
 
 </td>
 </tr>
@@ -173,6 +173,7 @@ qb switch you@example.com   # switch the active Antigravity account
 qb cost                     # Claude Code use priced at API rates (local logs)
 qb config get               # settings; `qb config set refresh 5` changes them in the running app
 qb config providers         # show / hide providers, add or remove API keys (`set-key <p> --stdin`)
+qb config export backup.json   # settings backup without API keys; `qb config import backup.json` restores it
 ```
 
 ## Privacy & security
@@ -213,6 +214,14 @@ src/QuotaBar.Cli    qb: CLI + MCP server
 ```
 
 Adding a provider means implementing `IUsageProvider` and registering it in `UsageService`. For a simple API-key provider, add an entry to `KeyProviders.Catalog`.
+
+## Translations
+
+Each language is one file in [`src/QuotaBar.App/Lang`](src/QuotaBar.App/Lang). It maps the English text to the translation. To fix a text or add a language:
+
+1. Edit or copy one of the `.json` files (keep placeholders like `{0}`).
+2. Run `python tools/extract-strings.py`. It lists missing texts and broken placeholders.
+3. For a new language, add it to `Languages` in [`L.cs`](src/QuotaBar.App/L.cs) and open a pull request.
 
 ## Credits
 

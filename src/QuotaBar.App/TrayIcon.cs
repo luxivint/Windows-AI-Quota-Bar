@@ -1,4 +1,4 @@
-using System.Drawing;
+﻿using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
@@ -9,7 +9,7 @@ public static class Metrics
 {
     public sealed record Metric(string Id, ProviderSnapshot Provider, UsageWindow Window)
     {
-        public string Title => $"{Visuals.ShortName(Provider)} · {Window.Label}";
+        public string Title => $"{Visuals.ShortName(Provider)} · {L.Window(Window.Label)}";
     }
 
     /// <summary>"providerId|windowKey". providerId "antigravity" means "whichever account is active".</summary>
@@ -66,23 +66,30 @@ public sealed class TrayIcon : IDisposable
         _icon = new NotifyIcon { Visible = true, Text = "Windows AI Quota Bar" };
         _icon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) App.Instance.TogglePanel(); };
         _icon.BalloonTipClicked += (_, _) => App.Instance.ShowPanel();
-        var menu = new ContextMenuStrip();
-        menu.Items.Add("Open Windows AI Quota Bar", null, (_, _) => App.Instance.ShowPanel());
-        menu.Items.Add("Refresh now", null, (_, _) => _ = App.Instance.RefreshAsync());
-        menu.Items.Add("Settings", null, (_, _) => App.Instance.ShowPanel("settings"));
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Quit", null, (_, _) => App.Instance.Quit());
-        _icon.ContextMenuStrip = menu;
+        BuildMenu();
         App.Instance.ReportChanged += Update;
         Theme.Changed += Update;
         Update();
+    }
+
+    public void BuildMenu()
+    {
+        var old = _icon.ContextMenuStrip;
+        var menu = new ContextMenuStrip();
+        menu.Items.Add(L.T("Open Windows AI Quota Bar", "Windows AI Quota Bar'ı aç"), null, (_, _) => App.Instance.ShowPanel());
+        menu.Items.Add(L.T("Refresh now", "Şimdi yenile"), null, (_, _) => _ = App.Instance.RefreshAsync());
+        menu.Items.Add(L.T("Settings", "Ayarlar"), null, (_, _) => App.Instance.ShowPanel("settings"));
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(L.T("Quit", "Çık"), null, (_, _) => App.Instance.Quit());
+        _icon.ContextMenuStrip = menu;
+        old?.Dispose();
     }
 
     void Update()
     {
         var app = App.Instance;
         var metrics = Metrics.ForWidget(app.Report, app.Settings);
-        var tip = metrics.Count == 0 ? "Windows AI Quota Bar" : "Windows AI Quota Bar\n" + string.Join("\n", metrics.Select(m => $"{m.Title}: {m.Window.LeftPercent:0}% left"));
+        var tip = metrics.Count == 0 ? "Windows AI Quota Bar" : "Windows AI Quota Bar\n" + string.Join("\n", metrics.Select(m => m.Title + ": " + L.F("{0:0}% left", "%{0:0} kaldı", m.Window.LeftPercent)));
         _icon.Text = tip.Length > 127 ? tip[..127] : tip;
 
         using var bmp = Render(metrics.Select(m => m.Window.LeftPercent).ToList());

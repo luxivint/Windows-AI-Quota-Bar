@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
@@ -223,13 +223,13 @@ public static class Visuals
     }
 
     /// <summary>Donut gauge, filled clockwise from 12 o'clock with what is LEFT. Optional content in the middle.</summary>
-    public static FrameworkElement Ring(double leftPercent, double size, double thickness, string? kind, UIElement? center = null, Brush? track = null)
+    public static FrameworkElement Ring(double leftPercent, double size, double thickness, string? kind, UIElement? center = null, Brush? track = null, Brush? fill = null)
     {
         var g = new Grid { Width = size, Height = size };
         var r = (size - thickness) / 2;
         g.Children.Add(new Ellipse { Width = size - thickness, Height = size - thickness, Stroke = track ?? Theme.Track, StrokeThickness = thickness, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
         var f = Math.Clamp(leftPercent / 100, 0, 1);
-        var brush = LeftBrush(kind, leftPercent);
+        var brush = fill ?? LeftBrush(kind, leftPercent);
         if (f >= 0.999)
             g.Children.Add(new Ellipse { Width = size - thickness, Height = size - thickness, Stroke = brush, StrokeThickness = thickness, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
         else if (f > 0.005)

@@ -21,8 +21,15 @@ public static class DemoData
         ReadOnly = true,
         StartWithWindows = true,
         WidgetMetrics = new() { "claude|five_hour", "codex|primary" },
+        // For screenshots: QUOTABAR_DEMO_WIDGET=bars,status,large
+        WidgetStyle = DemoWidget("bars", "rings") ?? "rings",
+        WidgetColor = DemoWidget("brand", "status", "mono", "accent") ?? "brand",
+        WidgetSize = DemoWidget("compact", "normal", "large") ?? "normal",
         KeyAccounts = new() { new KeyAccount { Id = "demo0openrtr", Kind = "openrouter", Label = "OpenRouter" } },
     };
+
+    static string? DemoWidget(params string[] options) =>
+        (Environment.GetEnvironmentVariable("QUOTABAR_DEMO_WIDGET") ?? "").Split(',').FirstOrDefault(options.Contains);
 
     public static UsageReport Report()
     {

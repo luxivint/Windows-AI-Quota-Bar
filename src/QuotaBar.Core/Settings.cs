@@ -22,6 +22,12 @@ public sealed class AppSettings
     public bool CheckServiceStatus { get; set; } = true;
     /// <summary>Price local Claude Code logs at API rates (token counts only, nothing leaves the PC).</summary>
     public bool ScanLocalCost { get; set; } = true;
+    /// <summary>"auto" (Windows language) or en, tr, de, es, fr, pt, ja, zh.</summary>
+    public string Language { get; set; } = "auto";
+    /// <summary>Taskbar widget fill: brand (provider colors), status (green / amber / red), mono, accent (Windows accent color).</summary>
+    public string WidgetColor { get; set; } = "brand";
+    /// <summary>Taskbar widget size: compact, normal, large.</summary>
+    public string WidgetSize { get; set; } = "normal";
     public Dictionary<string, bool> EnabledProviders { get; set; } = new();
     /// <summary>Extra OpenCode Go API keys (besides the ones read from OpenCode itself). Stored DPAPI-encrypted, here only labels.</summary>
     public List<string> OpenCodeExtraKeyLabels { get; set; } = new();

@@ -31,6 +31,10 @@ public static class SettingsPage
 
         // ---- General --------------------------------------------------------------------------------
         var general = Card(sp, "", L.T("General", "Genel"));
+        general.Children.Add(Row(L.T("Language", "Dil"), null,
+            Dropdown(new List<(string, string)> { (L.T("Windows language", "Windows dili"), "auto") }.Concat(L.Languages.Select(l => (l.Name, l.Code))).ToList(),
+                s.Language, v => { app.SetLanguage(v); panel.Navigate("settings"); })));
+        general.Children.Add(Divider());
         general.Children.Add(Row(L.T("Refresh every", "Yenileme aralığı"), null,
             Segmented(new[] { 1, 2, 5, 10, 15, 30 }.Select(m => ($"{m}", m.ToString())).ToList(), s.RefreshMinutes.ToString(),
                 v => { s.RefreshMinutes = int.Parse(v); app.SaveSettings(); }, L.T(" min", " dk"))));
@@ -76,7 +80,7 @@ public static class SettingsPage
                 Toggle(al.Incidents, v => { al.Incidents = v; app.SaveSettings(); })));
             nt.Children.Add(Divider());
             nt.Children.Add(Row(L.T("Unused quota", "Kullanılmayan kota"),
-                L.T($"{Alerts.UnusedMinLeft:0}%+ left {Alerts.UnusedLead.TotalHours:0} h before a weekly reset", $"Haftalık sıfırlamaya {Alerts.UnusedLead.TotalHours:0} sa kala %{Alerts.UnusedMinLeft:0}+ boşsa"),
+                L.F("{0:0}%+ left {1:0} h before a weekly reset", "Haftalık sıfırlamaya {1:0} sa kala %{0:0}+ boşsa", Alerts.UnusedMinLeft, Alerts.UnusedLead.TotalHours),
                 Toggle(al.Unused, v => { al.Unused = v; app.SaveSettings(); })));
             var kinds = app.Report?.Providers.Where(p => p.Status != ProviderStatus.Disabled).Select(p => p.ProviderKind).Distinct().ToList() ?? new();
             if (kinds.Count > 0)
@@ -123,6 +127,17 @@ public static class SettingsPage
         tb.Children.Add(Row(L.T("Style", "Görünüm"), null,
             Segmented(new List<(string, string)> { (L.T("Rings", "Halkalar"), "rings"), (L.T("Bars", "Çubuklar"), "bars") }, s.WidgetStyle,
                 v => { s.WidgetStyle = v; app.SaveSettings(); })));
+        tb.Children.Add(Divider());
+        tb.Children.Add(Row(L.T("Colors", "Renkler"), L.T("Low limits always turn amber and red", "Azalan limitler her zaman turuncu ve kırmızı olur"),
+            Dropdown(new List<(string, string)>
+            {
+                (L.T("Provider colors", "Sağlayıcı renkleri"), "brand"), (L.T("Green to red", "Yeşilden kırmızıya"), "status"),
+                (L.T("Monochrome", "Tek renk"), "mono"), (L.T("Windows accent", "Windows vurgu rengi"), "accent"),
+            }, s.WidgetColor, v => { s.WidgetColor = v; app.SaveSettings(); panel.Navigate("settings"); })));
+        tb.Children.Add(Divider());
+        tb.Children.Add(Row(L.T("Size", "Boyut"), null,
+            Segmented(new List<(string, string)> { (L.T("Compact", "Küçük"), "compact"), (L.T("Normal", "Normal"), "normal"), (L.T("Large", "Büyük"), "large") }, s.WidgetSize,
+                v => { s.WidgetSize = v; app.SaveSettings(); })));
         tb.Children.Add(Divider());
         tb.Children.Add(Row(L.T("Pick automatically", "Otomatik seç"), L.T("Show the limits closest to running out", "Bitmeye en yakın limitleri göster"),
             Toggle(s.WidgetAuto, v => { s.WidgetAuto = v; app.SaveSettings(); panel.Navigate("settings"); })));
@@ -174,7 +189,7 @@ public static class SettingsPage
         var upd = Card(sp, "", L.T("Updates", "Güncellemeler"));
         var current = $"{L.T("Version", "Sürüm")} {Updates.Current}";
         string updSub = app.UpdateStatus
-            ?? (app.Update is { } nu ? L.T($"Version {nu.Version} is available", $"{nu.Version} sürümü hazır") : L.T("Checks GitHub releases", "GitHub sürümlerini kontrol eder"));
+            ?? (app.Update is { } nu ? L.F("Version {0} is available", "{0} sürümü hazır", nu.Version) : L.T("Checks GitHub releases", "GitHub sürümlerini kontrol eder"));
         var updBtn = app.Update != null && !app.UpdateBusy
             ? Visuals.Chip(Updates.CanSelfUpdate ? L.T("Update now", "Şimdi güncelle") : L.T("Download", "İndir"), () => _ = app.InstallUpdateAsync(), primary: true)
             : Visuals.Chip(L.T("Check now", "Şimdi kontrol et"), async () => { await app.CheckUpdatesAsync(true); panel.Navigate("settings"); });
@@ -192,6 +207,9 @@ public static class SettingsPage
         var about = Card(sp, "", L.T("About", "Hakkında"));
         about.Children.Add(Row("Windows AI Quota Bar", L.T("Open source · MIT license", "Açık kaynak · MIT lisansı"),
             Buttons(Visuals.Chip("GitHub", () => App.OpenUrl(RepoUrl)))));
+        about.Children.Add(Divider());
+        about.Children.Add(Row(L.T("Back up settings", "Ayarları yedekle"), L.T("API keys are never included", "API anahtarları asla dahil edilmez"),
+            Buttons(SmallButton(L.T("Export…", "Dışa aktar…"), ExportSettings), SmallButton(L.T("Import…", "İçe aktar…"), () => ImportSettings(panel)))));
         about.Children.Add(Divider());
         about.Children.Add(Buttons(
             Visuals.Chip(L.T("Open data folder", "Veri klasörünü aç"), () => App.OpenUrl(AppPaths.Data)),
@@ -234,7 +252,7 @@ public static class SettingsPage
         Sep();
         var accounts = App.Demo ? DemoData.AntigravityAccounts : AntigravityAccounts.List();
         card.Children.Add(AccountRow("antigravity", "Antigravity",
-            accounts.Count == 0 ? L.T("Sign in with agy once", "Bir kez agy ile giriş yap") : L.T($"{accounts.Count} account(s)", $"{accounts.Count} hesap"),
+            accounts.Count == 0 ? L.T("Sign in with agy once", "Bir kez agy ile giriş yap") : L.F("{0} account(s)", "{0} hesap", accounts.Count),
             null, Buttons(Visuals.Chip(L.T("Add account", "Hesap ekle"), AddAntigravityAccount)), "antigravity"));
         foreach (var a in accounts)
         {
@@ -246,7 +264,7 @@ public static class SettingsPage
             if (!a.Active) actions.Children.Add(SmallButton(L.T("Switch", "Geç"), () => panel.SwitchAntigravity(a.Email), primary: true));
             actions.Children.Add(SmallButton(L.T("Remove", "Kaldır"), () =>
             {
-                if (MessageBox.Show(L.T($"Forget {a.Email} in Windows AI Quota Bar?", $"{a.Email} Windows AI Quota Bar'dan kaldırılsın mı?"), "Windows AI Quota Bar", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
+                if (MessageBox.Show(L.F("Forget {0} in Windows AI Quota Bar?", "{0} Windows AI Quota Bar'dan kaldırılsın mı?", a.Email), "Windows AI Quota Bar", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
                 AntigravityAccounts.Remove(a.Email);
                 _ = app.RefreshAsync("antigravity");
                 panel.Navigate("settings");
@@ -289,7 +307,7 @@ public static class SettingsPage
             card.Children.Add(AccountRow(k.Kind, def?.Name ?? k.Kind, StatusText(snap, k.Label), snap,
                 Buttons(SmallButton(L.T("Remove", "Kaldır"), () =>
                 {
-                    if (MessageBox.Show(L.T($"Remove {k.Label}?", $"{k.Label} kaldırılsın mı?"), "Windows AI Quota Bar", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
+                    if (MessageBox.Show(L.F("Remove {0}?", "{0} kaldırılsın mı?", k.Label), "Windows AI Quota Bar", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
                     KeyProviders.Remove(s, k.Id);
                     _ = app.RefreshAsync();
                     panel.Navigate("settings");
@@ -415,7 +433,7 @@ public static class SettingsPage
             text.Children.Add(d);
             if (count > 0 || def.Beta)
             {
-                var t = count > 0 ? Tag(L.T($"✓ {count} added", $"✓ {count} eklendi"), Theme.Good) : Tag("beta", Theme.SubText);
+                var t = count > 0 ? Tag(L.F("✓ {0} added", "✓ {0} eklendi", count), Theme.Good) : Tag("beta", Theme.SubText);
                 t.Margin = new Thickness(0, 5, 0, 0); t.HorizontalAlignment = HorizontalAlignment.Left;
                 text.Children.Add(t);
             }
@@ -693,6 +711,53 @@ public static class SettingsPage
     }
 
     /// <summary>Pill-shaped segmented control.</summary>
+    static void ExportSettings()
+    {
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            FileName = "WindowsAIQuotaBar-settings.json", DefaultExt = ".json", Filter = "JSON (*.json)|*.json",
+            Title = L.T("Export settings", "Ayarları dışa aktar"),
+        };
+        if (dlg.ShowDialog() != true) return;
+        try { System.IO.File.WriteAllText(dlg.FileName, SettingsTransfer.Export(App.Instance.Settings)); }
+        catch (Exception ex) { MessageBox.Show(ex.Message, "Windows AI Quota Bar"); }
+    }
+
+    static void ImportSettings(PanelWindow panel)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog { DefaultExt = ".json", Filter = "JSON (*.json)|*.json", Title = L.T("Import settings", "Ayarları içe aktar") };
+        if (dlg.ShowDialog() != true) return;
+        try
+        {
+            var s = SettingsTransfer.Import(System.IO.File.ReadAllText(dlg.FileName), App.Instance.Settings);
+            App.Instance.ApplySettings(s);
+            panel.Navigate("settings");
+        }
+        catch (Exception ex) when (ex is FormatException or System.IO.IOException or System.Text.Json.JsonException)
+        {
+            MessageBox.Show(L.T("This file is not a settings backup.", "Bu dosya bir ayar yedeği değil.") + "\n" + ex.Message, "Windows AI Quota Bar");
+        }
+    }
+
+    /// <summary>A button showing the current choice; click opens a menu with all options.</summary>
+    public static FrameworkElement Dropdown(List<(string text, string value)> options, string current, Action<string> changed)
+    {
+        var label = options.FirstOrDefault(o => o.value == current).text ?? options[0].text;
+        Button? b = null;
+        b = SmallButton(label + "  ▾", () =>
+        {
+            var m = new ContextMenu { PlacementTarget = b, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
+            foreach (var (text, value) in options)
+            {
+                var i = new MenuItem { Header = text, IsChecked = value == current };
+                i.Click += (_, _) => changed(value);
+                m.Items.Add(i);
+            }
+            m.IsOpen = true;
+        });
+        return b;
+    }
+
     public static FrameworkElement Segmented(List<(string text, string value)> options, string current, Action<string> changed, string suffix = "")
     {
         var outer = new Border { CornerRadius = new CornerRadius(9), Background = Theme.Sidebar, BorderBrush = Theme.Border, BorderThickness = new Thickness(1), Padding = new Thickness(2) };

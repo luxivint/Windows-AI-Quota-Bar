@@ -109,7 +109,24 @@ public sealed class TaskbarWidget : Window
     }
 
     bool Bars => App.Instance.Settings.WidgetStyle == "bars";
-    double ContentWidth => Bars ? 204 : _count * 84 + 10;
+    double Scale => App.Instance.Settings.WidgetSize switch { "compact" => 0.9, "large" => 1.1, _ => 1.0 };
+    double ContentWidth => (Bars ? 204 : _count * 84 + 10) * Scale;
+
+    /// <summary>Fill for a limit, following Settings → Taskbar → Colors.</summary>
+    Brush Fill(string kind, double left, Brush fg)
+    {
+        switch (App.Instance.Settings.WidgetColor)
+        {
+            case "status":
+                return left <= 10 ? Theme.Bad : left <= 25 ? Theme.Warn : Theme.Good;
+            case "mono":
+                return left <= 10 ? Theme.Bad : left <= 25 ? Theme.Warn : fg;
+            case "accent":
+                return left <= 10 ? Theme.Bad : left <= 25 ? Theme.Warn : SystemParameters.WindowGlassBrush ?? Theme.Accent;
+            default:
+                return Visuals.LeftBrush(kind, left);
+        }
+    }
 
     void OnDragMove(object sender, MouseEventArgs e)
     {
@@ -160,6 +177,7 @@ public sealed class TaskbarWidget : Window
         Brush dim = new SolidColorBrush(dark ? Color.FromArgb(165, 255, 255, 255) : Color.FromArgb(150, 0, 0, 0));
         Brush track = new SolidColorBrush(dark ? Color.FromArgb(55, 255, 255, 255) : Color.FromArgb(38, 0, 0, 0));
 
+        _rows.LayoutTransform = Scale == 1.0 ? Transform.Identity : new ScaleTransform(Scale, Scale);
         if (metrics.Count == 0)
         {
             _rows.Orientation = Orientation.Horizontal;
@@ -188,7 +206,7 @@ public sealed class TaskbarWidget : Window
             var icon = Visuals.Icon(kind, 12, fg);
             icon.HorizontalAlignment = HorizontalAlignment.Center;
             icon.VerticalAlignment = VerticalAlignment.Center;
-            var ring = Visuals.Ring(m.Window.LeftPercent, 27, 3.2, kind, icon, track);
+            var ring = Visuals.Ring(m.Window.LeftPercent, 27, 3.2, kind, icon, track, Fill(kind, m.Window.LeftPercent, fg));
             ring.VerticalAlignment = VerticalAlignment.Center;
 
             var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0), Width = 42 };
@@ -228,7 +246,7 @@ public sealed class TaskbarWidget : Window
             var left = m.Window.LeftPercent;
             var barGrid = new Grid { Height = 6, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(2, 0, 6, 0) };
             barGrid.Children.Add(new Border { Background = track, CornerRadius = new CornerRadius(3) });
-            var fill = new Border { Background = Visuals.LeftBrush(kind, left), CornerRadius = new CornerRadius(3), HorizontalAlignment = HorizontalAlignment.Left };
+            var fill = new Border { Background = Fill(kind, left, fg), CornerRadius = new CornerRadius(3), HorizontalAlignment = HorizontalAlignment.Left };
             barGrid.Children.Add(fill);
             barGrid.SizeChanged += (_, _) => fill.Width = Math.Max(left > 0 ? 6 : 0, barGrid.ActualWidth * Math.Clamp(left, 0, 100) / 100);
             Grid.SetColumn(barGrid, 1); row.Children.Add(barGrid);

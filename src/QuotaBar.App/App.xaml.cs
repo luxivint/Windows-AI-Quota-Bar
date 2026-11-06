@@ -54,13 +54,6 @@ public partial class App : Application
     {
         base.OnStartup(e);
         Demo = e.Args.Contains("--demo");
-        // --lang=en / --lang=tr overrides the Windows UI language (must run before L is first used).
-        if (e.Args.FirstOrDefault(x => x.StartsWith("--lang=")) is { } lang)
-        {
-            var c = System.Globalization.CultureInfo.GetCultureInfo(lang[7..] == "tr" ? "tr-TR" : "en-US");
-            System.Globalization.CultureInfo.DefaultThreadCurrentUICulture = c;
-            System.Globalization.CultureInfo.CurrentUICulture = c;
-        }
         _mutex = new Mutex(true, Demo ? "QuotaBar.Demo" : "QuotaBar.SingleInstance", out var first);
         if (!first)
         {
@@ -80,6 +73,8 @@ public partial class App : Application
         Theme.Init();
         ClaudeWebBridge.Register();
         Settings = Demo ? DemoData.Settings() : AppSettings.Load();
+        // --lang=xx overrides the language setting (screenshots, testing).
+        L.Init(e.Args.FirstOrDefault(x => x.StartsWith("--lang=")) is { } lang ? lang[7..] : Settings.Language);
         if (!Demo) StartupRegistration.Apply(Settings.StartWithWindows);
 
         Report = Demo ? DemoData.Report() : UsageService.LoadCached();
@@ -109,7 +104,7 @@ public partial class App : Application
         _ = RefreshAsync();
         _ = ScanCostAsync();
         if (e.Args.Contains("--updated"))
-            _tray?.Notify(L.T("Updated", "Güncellendi"), L.T($"Windows AI Quota Bar is now {Updates.Current}.", $"Windows AI Quota Bar {Updates.Current} sürümüne güncellendi."));
+            _tray?.Notify(L.T("Updated", "Güncellendi"), L.F("Windows AI Quota Bar is now {0}.", "Windows AI Quota Bar {0} sürümüne güncellendi.", Updates.Current));
         if (e.Args.Contains("--claude-login")) ClaudeLoginWindow.Open();
         else if (e.Args.Contains("--settings")) ShowPanel("settings");
         else if (e.Args.FirstOrDefault(x => x.StartsWith("--page=")) is { } page) ShowPanel(page[7..]);
@@ -184,9 +179,9 @@ public partial class App : Application
                 var name = Report.Providers.FirstOrDefault(p => p.ProviderKind == h.Kind)?.DisplayName ?? h.Kind;
                 if (Settings.Alerts.Enabled && Settings.Alerts.Incidents && !Settings.Alerts.Muted.Contains(h.Kind)
                     && h.Health >= Core.Health.Major && (old is null || old.Health < Core.Health.Major))
-                    _tray?.Notify(L.T($"{name}: service problem", $"{name}: hizmet sorunu"), h.Description);
+                    _tray?.Notify(L.F("{0}: service problem", "{0}: hizmet sorunu", name), h.Description);
                 if (old is { Health: >= Core.Health.Major } && h.Health == Core.Health.Operational && Settings.Alerts.Enabled && Settings.Alerts.Incidents)
-                    _tray?.Notify(L.T($"{name} is back", $"{name} düzeldi"), L.T("All systems operational.", "Tüm sistemler çalışıyor."));
+                    _tray?.Notify(L.F("{0} is back", "{0} düzeldi", name), L.T("All systems operational.", "Tüm sistemler çalışıyor."));
             }
             if (changed) ReportChanged?.Invoke();
         }
@@ -211,7 +206,7 @@ public partial class App : Application
                     Settings.NotifiedUpdate = u.Tag;
                     Settings.Save();
                     _tray?.Notify(L.T("Update available", "Güncelleme var"),
-                        L.T($"Windows AI Quota Bar {u.Version} is ready. Click to see what's new.", $"Windows AI Quota Bar {u.Version} hazır. Yenilikleri görmek için tıkla."));
+                        L.F("Windows AI Quota Bar {0} is ready. Click to see what's new.", "Windows AI Quota Bar {0} hazır. Yenilikleri görmek için tıkla.", u.Version));
                 }
             }
         }
@@ -235,7 +230,7 @@ public partial class App : Application
         {
             var progress = new Progress<double>(p =>
             {
-                var text = L.T($"Downloading {p:P0}", $"İndiriliyor %{p * 100:0}");
+                var text = L.F("Downloading {0:0}%", "İndiriliyor %{0:0}", p * 100);
                 if (text != UpdateStatus) { UpdateStatus = text; ReportChanged?.Invoke(); }
             });
             await Updates.InstallAsync(u, progress, CancellationToken.None);
@@ -267,17 +262,17 @@ public partial class App : Application
             var reset = a.Window.ResetsAt is { } r ? L.T("resets in ", "sıfırlanma: ") + L.Until(r, now) : "";
             return a.Kind switch
             {
-                AlertKind.Threshold => (L.T($"{name}: {a.Value:0}% used", $"{name}: %{a.Value:0} kullanıldı"),
-                                        L.T($"{a.Window.LeftPercent:0}% left", $"%{a.Window.LeftPercent:0} kaldı") + (reset == "" ? "" : " · " + reset)),
-                AlertKind.RunOut => (L.T($"{name} runs out in {L.Until(a.At!.Value, now)}", $"{name} {L.Until(a.At!.Value, now)} içinde bitecek"),
+                AlertKind.Threshold => (L.F("{0}: {1:0}% used", "{0}: %{1:0} kullanıldı", name, a.Value),
+                                        L.F("{0:0}% left", "%{0:0} kaldı", a.Window.LeftPercent) + (reset == "" ? "" : " · " + reset)),
+                AlertKind.RunOut => (L.F("{0} runs out in {1}", "{0} {1} içinde bitecek", name, L.Until(a.At!.Value, now)),
                                      L.T("At this pace it runs out before it resets", "Bu hızla sıfırlanmadan önce bitiyor") + (reset == "" ? "" : " (" + reset + ")")),
-                AlertKind.Reset => (L.T($"{name} has reset", $"{name} sıfırlandı"), L.T("Full quota available again.", "Kotanın tamamı yeniden kullanılabilir.")),
-                _ => (L.T($"{name}: {a.Value:0}% unused", $"{name}: %{a.Value:0} kullanılmadı"),
-                      L.T($"Resets in {L.Until(a.At!.Value, now)}. Use it or lose it.", $"{L.Until(a.At!.Value, now)} sonra sıfırlanıyor, kullanmazsan gidecek.")),
+                AlertKind.Reset => (L.F("{0} has reset", "{0} sıfırlandı", name), L.T("Full quota available again.", "Kotanın tamamı yeniden kullanılabilir.")),
+                _ => (L.F("{0}: {1:0}% unused", "{0}: %{1:0} kullanılmadı", name, a.Value),
+                      L.F("Resets in {0}. Use it or lose it.", "{0} sonra sıfırlanıyor, kullanmazsan gidecek.", L.Until(a.At!.Value, now))),
             };
         }
         if (alerts.Count == 1) { var (t, x) = Format(alerts[0]); _tray.Notify(t, x); }
-        else _tray.Notify(L.T($"{alerts.Count} usage alerts", $"{alerts.Count} kullanım uyarısı"), string.Join(Environment.NewLine, alerts.Take(4).Select(a => Format(a).title)));
+        else _tray.Notify(L.F("{0} usage alerts", "{0} kullanım uyarısı", alerts.Count), string.Join(Environment.NewLine, alerts.Take(4).Select(a => Format(a).title)));
         foreach (var a in alerts) Log($"alert {a.Kind} {a.Provider.Id}|{a.Window.Key} {a.Value:0}");
     }
 
@@ -321,16 +316,8 @@ public partial class App : Application
         {
             _settingsReload.Stop();
             if (DateTime.UtcNow - AppSettings.LastSaved < TimeSpan.FromSeconds(2)) return; // our own write
-            var fresh = AppSettings.Load();
-            Settings = fresh;
             Log("settings reloaded (changed outside the app)");
-            StartupRegistration.Apply(Settings.StartWithWindows);
-            ApplyWidgetSetting();
-            if (_hotkey != null) HotkeyError = _hotkey.Set(Settings.Hotkey);
-            NextRefresh = (LastRefresh ?? DateTimeOffset.Now).AddMinutes(Math.Max(1, Settings.RefreshMinutes));
-            SettingsChanged?.Invoke();
-            ReportChanged?.Invoke();
-            _ = RefreshAsync();
+            Adopt(AppSettings.Load());
         };
         _settingsWatcher = new FileSystemWatcher(AppPaths.Data, "settings.json")
         {
@@ -341,6 +328,37 @@ public partial class App : Application
         _settingsWatcher.Changed += h;
         _settingsWatcher.Created += h;
         _settingsWatcher.Renamed += (s, e) => h(s, e);
+    }
+
+    /// <summary>Takes over a settings object (imported backup) and saves it.</summary>
+    public void ApplySettings(AppSettings s)
+    {
+        Adopt(s);
+        SaveSettings();
+    }
+
+    void Adopt(AppSettings fresh)
+    {
+        var langChanged = fresh.Language != Settings.Language;
+        Settings = fresh;
+        if (langChanged) { L.Init(Settings.Language); _tray?.BuildMenu(); }
+        if (!Demo) StartupRegistration.Apply(Settings.StartWithWindows);
+        ApplyWidgetSetting();
+        if (_hotkey != null) HotkeyError = _hotkey.Set(Settings.Hotkey);
+        NextRefresh = (LastRefresh ?? DateTimeOffset.Now).AddMinutes(Math.Max(1, Settings.RefreshMinutes));
+        SettingsChanged?.Invoke();
+        ReportChanged?.Invoke();
+        _ = RefreshAsync();
+    }
+
+    /// <summary>Switches the UI language at once: panel, tray menu and widget are rebuilt.</summary>
+    public void SetLanguage(string code)
+    {
+        Settings.Language = code;
+        L.Init(code);
+        SaveSettings();
+        _tray?.BuildMenu();
+        ReportChanged?.Invoke();
     }
 
     public void TestNotification() =>
