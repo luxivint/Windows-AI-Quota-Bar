@@ -40,18 +40,68 @@ internal static class Native
 
     public static string ClassOf(IntPtr h) { var sb = new System.Text.StringBuilder(256); GetClassName(h, sb, 256); return sb.ToString(); }
 
-    /// <summary>True when the foreground window covers its whole monitor (game, video, presentation).</summary>
-    public static bool ForegroundIsFullscreen()
+    [DllImport("shell32.dll")] static extern int SHQueryUserNotificationState(out int state);
+
+    /// <summary>
+    /// True when the taskbar on <paramref name="tray"/>'s monitor is not really there: a full-screen app
+    /// (game, video, presentation) covers that monitor, or the taskbar is hidden / auto-hidden.
+    /// </summary>
+    public static bool TaskbarHidden(IntPtr tray)
     {
-        var fg = GetForegroundWindow();
-        if (fg == IntPtr.Zero) return false;
-        var cls = ClassOf(fg);
-        if (cls is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd") return false;
-        if (!GetWindowRect(fg, out var r)) return false;
+        if (!IsWindowVisible(tray) || !GetWindowRect(tray, out var bar)) return true;
         var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
-        if (!GetMonitorInfo(MonitorFromWindow(fg, 2), ref mi)) return false;
-        return r.Left <= mi.rcMonitor.Left && r.Top <= mi.rcMonitor.Top && r.Right >= mi.rcMonitor.Right && r.Bottom >= mi.rcMonitor.Bottom;
+        var trayMon = MonitorFromWindow(tray, 2);
+        if (!GetMonitorInfo(trayMon, ref mi)) return false;
+        var m = mi.rcMonitor;
+
+        // Auto-hide: the bar slides (almost) off the screen.
+        int visW = Math.Min(bar.Right, m.Right) - Math.Max(bar.Left, m.Left);
+        int visH = Math.Min(bar.Bottom, m.Bottom) - Math.Max(bar.Top, m.Top);
+        if (visW <= 0 || visH <= 0 || (bar.Width > bar.Height ? visH < bar.Height / 2 : visW < bar.Width / 2)) return true;
+
+        // Windows' own full-screen signal (D3D full screen, presentation mode, busy full-screen app).
+        if (SHQueryUserNotificationState(out var s) == 0 && s is 2 or 3 or 4)
+        {
+            var fgw = GetForegroundWindow();
+            if (fgw == IntPtr.Zero || MonitorFromWindow(fgw, 2) == trayMon) return true;
+        }
+
+        // Borderless full-screen window on the taskbar's monitor. Shell windows never count.
+        var fg = GetForegroundWindow();
+        if (fg == IntPtr.Zero || MonitorFromWindow(fg, 2) != trayMon) return false;
+        if (IsShell(fg)) return false;
+        if (!GetWindowRect(fg, out var r)) return false;
+        return r.Left <= m.Left && r.Top <= m.Top && r.Right >= m.Right && r.Bottom >= m.Bottom;
     }
+
+    /// <summary>Desktop, taskbar and shell flyouts (Start, calendar, notification center, tray overflow).</summary>
+    public static bool IsShell(IntPtr h)
+    {
+        var cls = ClassOf(h);
+        if (cls is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd" or "NotifyIconOverflowWindow"
+            or "TopLevelWindowForOverflowXamlIsland" or "Xaml_WindowedPopupClass" or "Windows.UI.Core.CoreWindow") return true;
+        GetWindowThreadProcessId(h, out var pid);
+        GetWindowThreadProcessId(FindWindow("Shell_TrayWnd", null), out var shellPid);
+        return pid == shellPid;
+    }
+
+    [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr h, uint cmd);
+    const uint GW_HWNDPREV = 3;
+
+    /// <summary>True when <paramref name="other"/> is above <paramref name="h"/> in the z-order.</summary>
+    public static bool IsAbove(IntPtr other, IntPtr h)
+    {
+        for (var w = GetWindow(h, GW_HWNDPREV); w != IntPtr.Zero; w = GetWindow(w, GW_HWNDPREV))
+            if (w == other) return true;
+        return false;
+    }
+
+    public delegate void WinEventProc(IntPtr hook, uint ev, IntPtr hwnd, int idObject, int idChild, uint thread, uint time);
+    [DllImport("user32.dll")] public static extern IntPtr SetWinEventHook(uint min, uint max, IntPtr mod, WinEventProc proc, uint pid, uint thread, uint flags);
+    [DllImport("user32.dll")] public static extern bool UnhookWinEvent(IntPtr hook);
+    public const uint EVENT_SYSTEM_FOREGROUND = 0x0003, EVENT_OBJECT_SHOW = 0x8002, EVENT_OBJECT_REORDER = 0x8004,
+        EVENT_OBJECT_LOCATIONCHANGE = 0x800B, WINEVENT_OUTOFCONTEXT = 0, WINEVENT_SKIPOWNPROCESS = 2;
+    public static uint ProcessOf(IntPtr h) { GetWindowThreadProcessId(h, out var pid); return pid; }
 
     [StructLayout(LayoutKind.Sequential)] public struct MARGINS { public int L, R, T, B; }
     [DllImport("dwmapi.dll")] public static extern int DwmExtendFrameIntoClientArea(IntPtr h, ref MARGINS m);

@@ -17,7 +17,10 @@ public sealed class TaskbarWidget : Window
     readonly StackPanel _rows = new() { VerticalAlignment = VerticalAlignment.Center };
     readonly Border _card;
     readonly DispatcherTimer _keeper = new() { Interval = TimeSpan.FromSeconds(1.5) };
-    IntPtr _hwnd, _tray;
+    IntPtr _hwnd, _tray, _fgHook, _shellHook;
+    uint _shellPid;
+    // Kept in a field so the GC does not collect the callback while Windows still calls it.
+    readonly Native.WinEventProc _onWinEvent;
     Point? _dragStart;
     int _dragStartOffset, _count = 2;
     bool _dragging, _hover;
@@ -47,6 +50,11 @@ public sealed class TaskbarWidget : Window
             if (_tray != IntPtr.Zero) new WindowInteropHelper(this).Owner = _tray; // stays above the taskbar
             Reposition();
         };
+        // React at once when the foreground window changes (full-screen app starts or ends) or the shell
+        // reorders its windows (clicking the clock or the tray brings the taskbar to the front, over us).
+        _onWinEvent = OnWinEvent;
+        _fgHook = Native.SetWinEventHook(Native.EVENT_SYSTEM_FOREGROUND, Native.EVENT_SYSTEM_FOREGROUND, IntPtr.Zero, _onWinEvent, 0, 0,
+            Native.WINEVENT_OUTOFCONTEXT | Native.WINEVENT_SKIPOWNPROCESS);
         _keeper.Tick += (_, _) => Reposition();
         _keeper.Start();
 
@@ -69,6 +77,8 @@ public sealed class TaskbarWidget : Window
         Closed += (_, _) =>
         {
             _keeper.Stop();
+            if (_fgHook != IntPtr.Zero) Native.UnhookWinEvent(_fgHook);
+            if (_shellHook != IntPtr.Zero) Native.UnhookWinEvent(_shellHook);
             App.Instance.ReportChanged -= Render; App.Instance.SettingsChanged -= Render; Theme.Changed -= Render;
         };
         Render();
@@ -211,14 +221,37 @@ public sealed class TaskbarWidget : Window
     static string Short(string s) => s.Split(' ')[0];
     static string ShortLabel(string label) => PanelWindow.WindowLabel(label).Split(' ')[0];
 
+    void OnWinEvent(IntPtr hook, uint ev, IntPtr hwnd, int idObject, int idChild, uint thread, uint time)
+    {
+        if (ev == Native.EVENT_SYSTEM_FOREGROUND) { Reposition(); return; }
+        if (idObject != 0 /* OBJID_WINDOW */) return;
+        if (ev == Native.EVENT_OBJECT_LOCATIONCHANGE) { if (hwnd == _tray) Reposition(); return; } // auto-hide slide
+        // Taskbar or a shell flyout was shown/reordered: get back on top of the taskbar right away.
+        if (_hwnd != IntPtr.Zero && Native.IsWindowVisible(_hwnd) && Native.IsAbove(_tray, _hwnd))
+            Native.SetWindowPos(_hwnd, Native.HWND_TOPMOST, 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
+    }
+
+    /// <summary>Listens to the shell process (explorer) only; re-attached when explorer restarts.</summary>
+    void HookShell()
+    {
+        var pid = Native.ProcessOf(_tray);
+        if (pid == 0 || pid == _shellPid) return;
+        if (_shellHook != IntPtr.Zero) Native.UnhookWinEvent(_shellHook);
+        _shellPid = pid;
+        _shellHook = Native.SetWinEventHook(Native.EVENT_OBJECT_SHOW, Native.EVENT_OBJECT_LOCATIONCHANGE, IntPtr.Zero, _onWinEvent, pid, 0,
+            Native.WINEVENT_OUTOFCONTEXT);
+    }
+
     void Reposition()
     {
         if (_hwnd == IntPtr.Zero) return;
         if (_tray == IntPtr.Zero || !Native.GetWindowRect(_tray, out _)) _tray = Native.FindWindow("Shell_TrayWnd", null);
         if (_tray == IntPtr.Zero || !Native.GetWindowRect(_tray, out var bar)) return;
+        HookShell();
 
+        // Hidden together with the taskbar (full-screen game/video, auto-hide); back as soon as the taskbar is.
         // Use Win32 visibility directly: WPF's Show/Hide state can disagree with the real window during startup.
-        if (Native.ForegroundIsFullscreen()) { if (Native.IsWindowVisible(_hwnd)) Native.ShowWindow(_hwnd, 0 /* SW_HIDE */); return; }
+        if (Native.TaskbarHidden(_tray)) { if (Native.IsWindowVisible(_hwnd)) Native.ShowWindow(_hwnd, 0 /* SW_HIDE */); return; }
 
         var dpi = Native.GetDpiForWindow(_tray) / 96.0;
         if (dpi <= 0) dpi = 1;
