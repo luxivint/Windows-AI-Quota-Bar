@@ -62,8 +62,9 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\QuotaBar.exe"; Tasks: desktop
 
 [Run]
 Filename: "{app}\QuotaBar.exe"; Description: "{cm:LaunchApp}"; Flags: nowait postinstall skipifsilent
-; Silent install = in-app update: start the new version again (it shows an "Updated" notification).
-Filename: "{app}\QuotaBar.exe"; Parameters: "--background --updated"; Flags: nowait; Check: WizardSilent
+; In-app update (silent, started by the app with /CLOSEAPPLICATIONS): start the new version again
+; (it shows an "Updated" notification). Other silent installs (winget, scripts) do not launch the app.
+Filename: "{app}\QuotaBar.exe"; Parameters: "--background --updated"; Flags: nowait; Check: IsInAppUpdate
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/IM QuotaBar.exe /F"; Flags: runhidden; RunOnceId: "KillApp"
@@ -74,6 +75,20 @@ Filename: "{sys}\taskkill.exe"; Parameters: "/IM qb.exe /F"; Flags: runhidden; R
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "QuotaBar"; Flags: uninsdeletevalue dontcreatekey
 
 [Code]
+function IsInAppUpdate: Boolean;
+var
+  I: Integer;
+begin
+  // The app's updater runs the setup as "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS".
+  // winget's silent switches do not include /CLOSEAPPLICATIONS, so a package-manager install stays quiet.
+  Result := False;
+  if not WizardSilent then
+    Exit;
+  for I := 1 to ParamCount do
+    if CompareText(ParamStr(I), '/CLOSEAPPLICATIONS') = 0 then
+      Result := True;
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   Code: Integer;
