@@ -84,14 +84,14 @@ From 0.5.0 on, releases are built by GitHub Actions and carry a build-provenance
 **1. Checksum.** Compare the hash with the `.sha256` file on the release and with the SHA-256 that GitHub shows next to each asset:
 
 ```powershell
-Get-FileHash .\WindowsAIQuotaBar-Setup-0.4.0.exe -Algorithm SHA256
+Get-FileHash .\WindowsAIQuotaBar-Setup-0.5.0.exe -Algorithm SHA256
 ```
 
 **2. Signature** (PowerShell 7):
 
 ```powershell
 $pub = 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEobHZOnIGIf4U9SkDrsULGKsKVxq/QPOm4doeHvk2qpWztdcbCyYM47SYqzw6p3ZTUjVQ71SE0qc8mhlKfhqk5w=='
-$file = '.\WindowsAIQuotaBar-Setup-0.4.0.exe'
+$file = '.\WindowsAIQuotaBar-Setup-0.5.0.exe'
 $k = [System.Security.Cryptography.ECDsa]::Create()
 $read = 0; $k.ImportSubjectPublicKeyInfo([Convert]::FromBase64String($pub), [ref]$read)
 $k.VerifyData([IO.File]::ReadAllBytes($file), [Convert]::FromBase64String((Get-Content "$file.sig" -Raw).Trim()), 'SHA256')   # True = genuine
