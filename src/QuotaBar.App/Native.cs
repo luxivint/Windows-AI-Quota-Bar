@@ -68,11 +68,26 @@ internal static class Native
 
         // Borderless full-screen window on the taskbar's monitor. Shell windows never count.
         var fg = GetForegroundWindow();
-        if (fg == IntPtr.Zero || MonitorFromWindow(fg, 2) != trayMon) return false;
-        if (IsShell(fg)) return false;
-        if (!GetWindowRect(fg, out var r)) return false;
-        return r.Left <= m.Left && r.Top <= m.Top && r.Right >= m.Right && r.Bottom >= m.Bottom;
+        if (fg != IntPtr.Zero && MonitorFromWindow(fg, 2) == trayMon && !IsShell(fg) && Covers(fg, m)) return true;
+
+        // A full-screen window that has lost focus (video on another monitor while you work on this one)
+        // still sits above that monitor's taskbar: look at every window above the taskbar in the z-order.
+        uint own = (uint)Environment.ProcessId;
+        for (var w = GetWindow(tray, GW_HWNDPREV); w != IntPtr.Zero; w = GetWindow(w, GW_HWNDPREV))
+        {
+            if (!IsWindowVisible(w) || IsIconic(w) || Cloaked(w) || ProcessOf(w) == own) continue;
+            if (Covers(w, m) && !IsShell(w)) return true;
+        }
+        return false;
     }
+
+    static bool Covers(IntPtr h, RECT m) =>
+        GetWindowRect(h, out var r) && r.Left <= m.Left && r.Top <= m.Top && r.Right >= m.Right && r.Bottom >= m.Bottom;
+
+    [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+    [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int attr, out int val, int size);
+    /// <summary>Hidden by DWM though "visible" (suspended store apps, windows on other virtual desktops).</summary>
+    static bool Cloaked(IntPtr h) => DwmGetWindowAttribute(h, 14 /* DWMWA_CLOAKED */, out var c, sizeof(int)) == 0 && c != 0;
 
     /// <summary>Desktop, taskbar and shell flyouts (Start, calendar, notification center, tray overflow).</summary>
     public static bool IsShell(IntPtr h)
