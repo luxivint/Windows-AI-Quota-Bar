@@ -10,5 +10,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/QuotaBar.Tests/QuotaBar.Tests.csproj" />
+    <Project Path="tests/QuotaBar.SwitcherChecks/QuotaBar.SwitcherChecks.csproj" />
+    <Project Path="tests/QuotaBar.UiChecks/QuotaBar.UiChecks.csproj" />
   </Folder>
 </Solution>

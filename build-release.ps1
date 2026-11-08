@@ -11,7 +11,12 @@ if (-not $Version) { $Version = ([xml](Get-Content Directory.Build.props)).Proje
 "Building $Version"
 
 $out = "artifacts\WindowsAIQuotaBar"
-if (Test-Path artifacts) { Remove-Item artifacts -Recurse -Force }
+$expectedOutput = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'artifacts/WindowsAIQuotaBar'))
+if ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot $out)) -ne $expectedOutput) { throw 'Release output escaped the expected directory.' }
+if (Test-Path -LiteralPath $expectedOutput) { Remove-Item -LiteralPath $expectedOutput -Recurse -Force }
+if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'artifacts/switcher-runtime/SwitcherHost.exe'))) {
+  & "$PSScriptRoot/tools/prepare-switcher-runtime.ps1"
+}
 
 # No debug symbols and mapped source paths, so the binaries carry no local paths.
 dotnet publish src/QuotaBar.App -c Release -r win-x64 --self-contained true -o $out `

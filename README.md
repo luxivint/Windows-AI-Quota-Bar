@@ -38,6 +38,8 @@ Paying for Claude Max, ChatGPT Plus, a couple of Google AI plans and an API key 
 
 ## Features
 
+This checkout integrates the original **Codex Account Switcher v0.1.27 engine** with Quota Bar's native interface. One Codex sidebar item opens a compact account page at the original 420 × 660 panel size, with active-account rings, a searchable list of 5-hour/weekly quotas, reset countdowns and confirmed Desktop close/switch/reopen. Active and inactive accounts appear together. See [integration and build details](docs/codex-accounts.md).
+
 <table>
 <tr>
 <td width="50%" valign="top">
@@ -107,7 +109,7 @@ Windows 11 Mica, rounded corners, follows light and dark mode. The widget comes 
 | | Provider | What is shown | Where the login comes from |
 |:-:|---|---|---|
 | <img src="docs/icons/claude.svg" width="18"> | **Claude** (Pro / Max) | 5-hour session, weekly, weekly Opus/Sonnet | Sign in to claude.ai inside the app, **or** your Claude Code CLI login |
-| <img src="docs/icons/codex.svg" width="18"> | **Codex / ChatGPT** (Plus / Pro) | 5-hour session, weekly, credits | `codex login` |
+| <img src="docs/icons/codex.svg" width="18"> | **Codex / ChatGPT** (multiple accounts) | 5-hour session, weekly, available reset credits | Browser sign-in or existing Codex login, managed by SwitcherCore |
 | <img src="docs/icons/antigravity.png" width="18"> | **Google Antigravity** | Gemini Pro, Gemini Flash, Claude, GPT-OSS, Image quotas, per account | `agy` CLI login |
 | <img src="docs/icons/opencode.svg" width="18"> | **OpenCode Go** | 5-hour, weekly, monthly | Keys saved by OpenCode, or added in Settings |
 | <img src="docs/icons/openrouter.svg" width="18"> | **OpenRouter** | Credits, key limit, daily / weekly / monthly spend | API key |
@@ -139,8 +141,8 @@ That's it. The app appears next to the clock and starts with Windows (you can tu
 ### Build from source
 
 ```powershell
-git clone https://github.com/valuex-creative/Windows-AI-Quota-Bar
 cd Windows-AI-Quota-Bar
+./tools/prepare-switcher-runtime.ps1
 dotnet publish src/QuotaBar.App -c Release -o "$env:LOCALAPPDATA\Programs\QuotaBar"
 & "$env:LOCALAPPDATA\Programs\QuotaBar\QuotaBar.exe"
 ```
@@ -167,7 +169,7 @@ Settings → **Ask your AI assistant** has a one-click button for this. Tools ex
 
 ```text
 qb                          # live usage for everything
-qb codex --json             # one provider, machine-readable
+qb codex --json             # Codex accounts from the desktop app's latest snapshot
 qb --cached                 # last snapshot from the running app (no network)
 qb accounts                 # Antigravity accounts (* = active)
 qb switch you@example.com   # switch the active Antigravity account
@@ -180,8 +182,8 @@ qb config export backup.json   # settings backup without API keys; `qb config im
 ## Privacy & security
 
 - **No telemetry, no server of its own.** The app only talks to each provider's own API, and to GitHub to check for updates (you can turn that off).
-- **It reads the logins your tools already keep on this PC.** It writes to another tool's login file only when that tool's token has expired. The refresh is locked, conflict-checked and atomic, so it cannot break a refresh the CLI is doing.
-- **Everything it stores is encrypted** with Windows DPAPI for your Windows user. Your `gh` token is never copied.
+- **Codex accounts use the original SwitcherCore.** It manages profile logins and replaces the active login after you confirm an account switch, closing and reopening Codex Desktop. Independently opened terminal sessions are left running.
+- **Codex profiles use user-only file permissions**, matching Account Switcher. Claude/Antigravity secrets and API keys use Windows DPAPI. Your `gh` token is never copied.
 - **Updates are signed.** An installer is accepted only if its ECDSA signature matches the public key built into the app. Automatic install is off by default.
 - **AI assistants can only read** your usage, unless you allow account switching in Settings.
 

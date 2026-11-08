@@ -36,7 +36,7 @@ public sealed class PanelWindow : Window
         ShowInTaskbar = false;
         Topmost = true;
         FontFamily = (FontFamily)Application.Current.Resources["UiFont"];
-        Icon = System.Windows.Media.Imaging.BitmapFrame.Create(new Uri("pack://application:,,,/Assets/quotabar.ico"));
+        Icon = System.Windows.Media.Imaging.BitmapFrame.Create(new Uri("pack://application:,,,/QuotaBar;component/Assets/quotabar.ico"));
         WindowChrome.SetWindowChrome(this, new WindowChrome { CaptionHeight = 0, ResizeBorderThickness = new Thickness(5), GlassFrameThickness = new Thickness(0), UseAeroCaptionButtons = false });
 
         _root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(58) });
@@ -65,7 +65,7 @@ public sealed class PanelWindow : Window
         _footLeft.VerticalAlignment = _footRight.VerticalAlignment = VerticalAlignment.Center;
         _footer.Children.Add(_footLeft);
         Grid.SetColumn(_footRight, 1); _footer.Children.Add(_footRight);
-        _refreshBtn = IconButton("", L.T("Refresh now", "Şimdi yenile"), () => _ = App.Instance.RefreshAsync());
+        _refreshBtn = IconButton("", L.T("Refresh now", "Şimdi yenile"), () => { App.Instance.RefreshCodex(); _ = App.Instance.RefreshAsync(); });
         Grid.SetColumn(_refreshBtn, 2); _footer.Children.Add(_refreshBtn);
         _pinBtn = IconButton("", L.T("Pin as a normal window", "Normal pencere olarak sabitle"), TogglePin);
         Grid.SetColumn(_pinBtn, 3); _footer.Children.Add(_pinBtn);
@@ -163,6 +163,10 @@ public sealed class PanelWindow : Window
 
     void Rebuild()
     {
+        var searchCaret = Keyboard.FocusedElement is TextBox { Name: "CodexAccountSearch" } searchBox ? searchBox.CaretIndex : -1;
+        if (_page == "codex" || _page.StartsWith("codex:")) _page = "codex-accounts";
+        var accounts = _page == "codex-accounts";
+        _scroll.VerticalScrollBarVisibility = accounts ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Hidden;
         _shownReport = App.Instance.Report;
         _dirty = false;
         Background = _mica ? Brushes.Transparent : Theme.Bg;
@@ -174,15 +178,18 @@ public sealed class PanelWindow : Window
         BuildSidebar();
 
         var report = App.Instance.Report;
-        if (_page != "overview" && _page != "settings" && report?.Providers.Any(p => p.Id == _page) != true)
+        if (_page != "overview" && _page != "settings" && _page != "codex-accounts" && report?.Providers.Any(p => p.Id == _page) != true)
             _page = "overview";
 
         _scroll.Content = _page switch
         {
             "settings" => SettingsPage.Build(this),
+            "codex-accounts" => CodexAccountsPage.Build(this),
             "overview" => BuildOverview(report),
             _ => BuildProvider(report!.Providers.First(p => p.Id == _page)),
         };
+        if (accounts && searchCaret >= 0 && IsVisible)
+            Dispatcher.BeginInvoke(new Action(() => { if (_page == "codex-accounts" && IsVisible) CodexAccountsPage.RestoreSearchFocus(searchCaret); }));
         ((TextBlock)((Button)_pinBtn).Content).Text = _pinned ? "" : "";
         _pinBtn.ToolTip = _pinned ? L.T("Unpin (back to tray popup)", "Sabitlemeyi kaldır") : L.T("Pin as a normal window", "Normal pencere olarak sabitle");
         UpdateFooter();
@@ -247,11 +254,18 @@ public sealed class PanelWindow : Window
         var report = App.Instance.Report;
         if (report != null)
         {
-            foreach (var p in report.Providers.Where(p => p.Status != ProviderStatus.Disabled))
+            foreach (var p in report.Providers.Where(p => p.Status != ProviderStatus.Disabled)
+                .DistinctBy(p => p.ProviderKind == "codex" ? "codex" : p.Id))
             {
+                if (p.ProviderKind == "codex")
+                {
+                    _sidebarTop.Children.Add(SideItem("codex-accounts", Visuals.Icon("codex", 22),
+                        L.T("Codex accounts", "Codex hesapları")));
+                    continue;
+                }
                 var icon = Visuals.Icon(p.ProviderKind, 22);
                 FrameworkElement content = icon;
-                if (p.ProviderKind is "antigravity" or "opencode-go" && report.Providers.Count(x => x.ProviderKind == p.ProviderKind) > 1)
+                if (p.ProviderKind is "antigravity" or "opencode-go" or "codex" && report.Providers.Count(x => x.ProviderKind == p.ProviderKind) > 1)
                 {
                     var g = new Grid();
                     g.Children.Add(icon);
@@ -291,7 +305,7 @@ public sealed class PanelWindow : Window
     FrameworkElement SideItem(string page, FrameworkElement content, string tooltip, Action? click = null)
     {
         var selected = _page == page;
-        var kind = App.Instance.Report?.Providers.FirstOrDefault(x => x.Id == page)?.ProviderKind;
+        var kind = page == "codex-accounts" ? "codex" : App.Instance.Report?.Providers.FirstOrDefault(x => x.Id == page)?.ProviderKind;
         var host = new Grid { Height = 44, Margin = new Thickness(0, 2, 0, 2), Cursor = Cursors.Hand, Background = Brushes.Transparent, ToolTip = tooltip };
         var selBrush = kind != null ? Visuals.Tint(kind, (byte)(Theme.Dark ? 48 : 34)) : Theme.Selected;
         var bg = new Border { Margin = new Thickness(8, 0, 8, 0), CornerRadius = new CornerRadius(10), Background = selected ? selBrush : Brushes.Transparent };
@@ -330,7 +344,8 @@ public sealed class PanelWindow : Window
             return sp;
         }
         var now = DateTimeOffset.Now;
-        foreach (var p in report.Providers.Where(p => p.Status != ProviderStatus.Disabled))
+        foreach (var p in report.Providers.Where(p => p.Status != ProviderStatus.Disabled)
+            .Where(p => p.ProviderKind != "codex" || p == report.Providers.Where(x => x.ProviderKind == "codex").OrderByDescending(x => x.IsActiveAccount).First()))
         {
             var card = new Border
             {
@@ -348,11 +363,13 @@ public sealed class PanelWindow : Window
             }
             var title = new StackPanel { Orientation = Orientation.Horizontal };
             title.Children.Add(Visuals.Label(p.DisplayName, 14, weight: FontWeights.SemiBold));
-            if (p.ProviderKind == "antigravity" && p.IsActiveAccount)
+            if (p.ProviderKind is "antigravity" or "codex" && p.IsActiveAccount)
                 title.Children.Add(Visuals.Dot(Theme.Accent, 6));
             head.Children.Add(title);
             inner.Children.Add(head);
-            if (p.Account != null && p.ProviderKind is "antigravity" or "opencode-go")
+            if (p.ProviderKind == "codex")
+                inner.Children.Add(Visuals.Label(L.F("{0} account(s)", "{0} hesap", report.Providers.Count(x => x.ProviderKind == "codex")), 11.5, Theme.SubText));
+            if (p.Account != null && p.ProviderKind is "antigravity" or "opencode-go" or "codex")
             {
                 var acc = Visuals.Label(p.Account, 11.5, Theme.SubText);
                 acc.Margin = new Thickness(26, 0, 0, 0);
@@ -434,7 +451,7 @@ public sealed class PanelWindow : Window
         {
             var acc = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
             acc.Children.Add(Visuals.Label(p.Account, 12.5, Theme.SubText));
-            if (p.ProviderKind == "antigravity" && p.IsActiveAccount)
+            if (p.ProviderKind is "antigravity" or "codex" && p.IsActiveAccount)
                 acc.Children.Add(new Border
                 {
                     Background = Theme.Accent, CornerRadius = new CornerRadius(4), Padding = new Thickness(6, 0, 6, 1), Margin = new Thickness(8, 0, 0, 0),
@@ -450,6 +467,10 @@ public sealed class PanelWindow : Window
         if (p.ProviderKind == "antigravity" && !p.IsActiveAccount && p.Account != null)
             links.Children.Add(Visuals.Chip(L.T("Make active", "Bu hesaba geç"), () => SwitchAntigravity(p.Account!), primary: true));
         sp.Children.Add(links);
+        if (p.ProviderKind == "codex")
+            sp.Children.Add(Wrap(Visuals.Chip(L.T("Manage accounts", "Hesapları yönet"), () => Navigate("codex-accounts"))));
+        if (p.ProviderKind == "codex" && !p.IsActiveAccount && Guid.TryParse(p.Id.Replace("codex:", ""), out var codexId))
+            sp.Children.Add(Wrap(Visuals.Chip(L.T("Switch to this account", "Bu hesaba geç"), () => CodexAccountsPage.ConfirmSwitch(this, codexId), primary: true)));
         if (App.Instance.HealthOf(p.ProviderKind) is { } incident) sp.Children.Add(IncidentLine(incident, compact: false));
 
         if (p.Status != ProviderStatus.Ok)
@@ -460,7 +481,7 @@ public sealed class PanelWindow : Window
             if (p.ProviderKind == "claude" && p.Status == ProviderStatus.NeedsLogin)
                 sp.Children.Add(Wrap(Visuals.Chip(L.T("Sign in to claude.ai", "claude.ai'ye giriş yap"), () => ClaudeLoginWindow.Open(), primary: true)));
             if (p.ProviderKind == "codex" && p.Status == ProviderStatus.NeedsLogin)
-                sp.Children.Add(Wrap(Visuals.Chip(L.T("Run codex login", "codex login çalıştır"), () => RunInTerminal("codex login"), primary: true)));
+                sp.Children.Add(Wrap(Visuals.Chip(L.T("Add account", "Hesap ekle"), () => Navigate("codex-accounts"), primary: true)));
         }
 
         if (p.Status == ProviderStatus.Ok && p.Windows.Count > 0)

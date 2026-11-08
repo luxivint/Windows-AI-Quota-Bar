@@ -23,8 +23,20 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Prepare pinned account engine
+        shell: pwsh
+        run: ./tools/prepare-switcher-runtime.ps1
+
       - name: Tests
         run: dotnet test tests/QuotaBar.Tests -c Release --logger "console;verbosity=normal"
+
+      - name: Account engine integration and UI
+        shell: pwsh
+        run: |
+          dotnet run --project tests/QuotaBar.SwitcherChecks -c Release -- artifacts/switcher-runtime/SwitcherHost.exe
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          dotnet run --project tests/QuotaBar.UiChecks -c Release -- artifacts/screenshots
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
       - name: Translations complete
         run: python tools/extract-strings.py

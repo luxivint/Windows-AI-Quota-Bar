@@ -4,6 +4,21 @@ obj/
 *.user
 publish/
 artifacts/
+.references/
+
+# Local credentials, account state and logs never belong in source control.
+.env
+.env.*
+!.env.example
+auth.json
+accounts.json
+usage-cache.json
+snapshot.json
+settings.json
+alerts.json
+reset-expiry-experiment.jsonl
+**/secrets/
+*.log
 
 # Never commit signing keys
 *.key

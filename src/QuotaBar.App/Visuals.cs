@@ -39,7 +39,7 @@ public static class Visuals
         SvgIcon? result = null;
         try
         {
-            var info = Application.GetResourceStream(new Uri($"pack://application:,,,/Assets/icons/{file}"));
+            var info = Application.GetResourceStream(new Uri($"pack://application:,,,/QuotaBar;component/Assets/icons/{file}"));
             if (info != null)
             {
                 var doc = System.Xml.Linq.XDocument.Load(info.Stream);
@@ -106,7 +106,7 @@ public static class Visuals
         {
             try
             {
-                _agy ??= new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/Assets/icons/antigravity.png"));
+                _agy ??= new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/QuotaBar;component/Assets/icons/antigravity.png"));
                 var img = new Image { Source = _agy, Width = size, Height = size, Stretch = Stretch.Uniform };
                 RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
                 return img;
@@ -306,5 +306,5 @@ public static class Visuals
     }
 
     public static string ShortName(ProviderSnapshot p) =>
-        p.Account is { } a && p.ProviderKind is "antigravity" ? a.Split('@')[0] : p.Account is { } acc && p.ProviderKind is "opencode-go" ? acc : p.DisplayName;
+        p.Account is { } a && p.ProviderKind is "antigravity" or "codex" ? a.Split('@')[0] : p.Account is { } acc && p.ProviderKind is "opencode-go" ? acc : p.DisplayName;
 }

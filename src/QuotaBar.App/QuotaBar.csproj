@@ -11,7 +11,6 @@
     <RootNamespace>QuotaBar.App</RootNamespace>
     <ApplicationIcon>Assets\quotabar.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>0.1.0</Version>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
@@ -21,5 +20,10 @@
     <EmbeddedResource Include="Lang\*.json" LogicalName="Lang.%(Filename).json" />
     <Resource Include="Assets\icons\*.svg" />
     <Resource Include="Assets\icons\*.png" />
+    <Content Include="..\..\artifacts\switcher-runtime\**\*" Link="switcher-runtime\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\vendor\CodexAccountSwitcher\LICENSE" Link="licenses\CodexAccountSwitcher-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <Target Name="CheckSwitcherRuntime" BeforeTargets="PrepareForBuild" Condition="'$(SkipSwitcherRuntimeCheck)' != 'true'">
+    <Error Condition="!Exists('$(MSBuildProjectDirectory)\..\..\artifacts\switcher-runtime\SwitcherHost.exe')" Text="Run tools/prepare-switcher-runtime.ps1 before building the account-enabled app." />
+  </Target>
 </Project>

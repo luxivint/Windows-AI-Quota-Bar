@@ -30,7 +30,7 @@ public static class Metrics
         foreach (var p in r.Providers.Where(p => p.Status == ProviderStatus.Ok))
             foreach (var w in p.Windows)
             {
-                var pid = p.ProviderKind == "antigravity" && p.IsActiveAccount ? "antigravity" : p.Id;
+                var pid = p.ProviderKind is "antigravity" or "codex" && p.IsActiveAccount ? p.ProviderKind : p.Id;
                 yield return new Metric($"{pid}|{w.Key}", p, w);
             }
     }
@@ -40,7 +40,7 @@ public static class Metrics
     /// (soonest), then the least left.
     /// </summary>
     public static List<Metric> Urgent(UsageReport? r, DateTimeOffset now) =>
-        All(r).Where(m => m.Provider.IsActiveAccount || m.Provider.ProviderKind != "antigravity")
+        All(r).Where(m => m.Provider.IsActiveAccount || m.Provider.ProviderKind is not ("antigravity" or "codex"))
               .OrderBy(m => m.Window.ProjectedRunOut(now) is { } ro ? (ro - now).TotalHours : double.MaxValue)
               .ThenBy(m => m.Window.LeftPercent)
               .GroupBy(m => m.Provider.Id).Select(g => g.First())

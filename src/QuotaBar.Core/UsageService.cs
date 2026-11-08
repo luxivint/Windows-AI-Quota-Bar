@@ -13,10 +13,12 @@ public interface IUsageProvider
 
 public sealed class UsageService
 {
-    public IReadOnlyList<IUsageProvider> Providers { get; } = new IUsageProvider[]
+    public IReadOnlyList<IUsageProvider> Providers { get; }
+
+    public UsageService(IUsageProvider? codex = null) => Providers = new IUsageProvider[]
     {
         new ClaudeProvider(),
-        new CodexProvider(),
+        codex ?? new CodexProvider(),
         new AntigravityProvider(),
         new OpenCodeGoProvider(),
     }.Concat(KeyProviders.Catalog.Select(d => (IUsageProvider)new KeyAccountsProvider(d))).ToList();
@@ -63,6 +65,8 @@ public sealed class UsageService
             {
                 var cur = report.Providers[i];
                 if (cur.Status is ProviderStatus.Ok or ProviderStatus.Disabled) continue;
+                // A failed Codex fetch cannot establish which account is active. Do not show another account's cached quota.
+                if (cur.ProviderKind == "codex") continue;
                 var old = prev.Providers.FirstOrDefault(p => p.Id == cur.Id && p.Status == ProviderStatus.Ok);
                 if (old != null && DateTimeOffset.Now - old.FetchedAt < TimeSpan.FromMinutes(30))
                 {

@@ -37,8 +37,19 @@ public partial class App : Application
     public CostSummary? Cost { get; private set; }
     DateTimeOffset _nextCostScan = DateTimeOffset.Now.AddMinutes(5);
 
-    readonly UsageService _service = new();
-    readonly AlertState _alertState = AlertState.Load();
+    public CodexSwitcherService Codex { get; } = new();
+    readonly UsageService _service;
+    bool _quitting;
+    readonly bool _startRuntime;
+    public App() : this(true) { }
+    public App(bool startRuntime)
+    {
+        _startRuntime = startRuntime;
+        _service = new UsageService(new Core.Providers.CodexProvider(() => Codex.Providers));
+        _alertState = startRuntime ? AlertState.Load() : new AlertState();
+        if (!startRuntime) { Demo = true; Settings = DemoData.Settings(); Report = DemoData.Report(); }
+    }
+    readonly AlertState _alertState;
     TrayIcon? _tray;
     PanelWindow? _panel;
     readonly List<TaskbarWidget> _widgets = new();
@@ -46,6 +57,7 @@ public partial class App : Application
     /// <summary>Why the shortcut could not be registered (shown in Settings), or null.</summary>
     public string? HotkeyError { get; private set; }
     DispatcherTimer? _timer;
+    DispatcherTimer? _codexChangedTimer;
     Mutex? _mutex;
     string? _pending;
     EventWaitHandle? _showSignal;
@@ -53,6 +65,7 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        if (!_startRuntime) return;
         Demo = e.Args.Contains("--demo");
         _mutex = new Mutex(true, Demo ? "QuotaBar.Demo" : "QuotaBar.SingleInstance", out var first);
         if (!first)
@@ -82,6 +95,10 @@ public partial class App : Application
         LastRefresh = Report?.GeneratedAt;
 
         _panel = new PanelWindow();
+        _codexChangedTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        _codexChangedTimer.Tick += (_, _) => { _codexChangedTimer.Stop(); if (!_quitting) _ = RefreshAsync("codex"); };
+        Codex.Changed += () => Dispatcher.BeginInvoke(new Action(() => { if (!_quitting) { _codexChangedTimer.Stop(); _codexChangedTimer.Start(); } }));
+        Codex.ActivationRequested += () => Dispatcher.BeginInvoke(new Action(() => ShowPanel("codex-accounts")));
         _tray = new TrayIcon();
         ApplyWidgetSetting();
         if (!Demo) { _hotkey = new GlobalHotkey(TogglePanel); HotkeyError = _hotkey.Set(Settings.Hotkey); }
@@ -102,6 +119,7 @@ public partial class App : Application
 
         ReportChanged?.Invoke();
         _ = RefreshAsync();
+        RefreshCodex();
         _ = ScanCostAsync();
         if (e.Args.Contains("--updated"))
             _tray?.Notify(L.T("Updated", "Güncellendi"), L.F("Windows AI Quota Bar is now {0}.", "Windows AI Quota Bar {0} sürümüne güncellendi.", Updates.Current));
@@ -377,10 +395,26 @@ public partial class App : Application
         if (_panel is null) return;
         if (page != null) _panel.Navigate(page);
         _panel.ShowNearTray();
+        RefreshCodex();
     }
 
-    public void Quit()
+    public void RefreshCodex()
     {
+        if (!Demo && !_quitting && Settings.IsEnabled("codex")) _ = Codex.RefreshAsync();
+    }
+
+    public async void Quit()
+    {
+        if (_quitting) return;
+        if (Codex.IsBusy)
+        {
+            MessageBox.Show(L.T("Finish the account operation or cancel sign-in before quitting.", "Çıkmadan önce hesap işlemini tamamla veya girişi iptal et."), "Windows AI Quota Bar");
+            return;
+        }
+        _quitting = true;
+        _timer?.Stop();
+        _codexChangedTimer?.Stop();
+        await Codex.DisposeAsync();
         _tray?.Dispose();
         foreach (var w in _widgets) w.Close();
         _hotkey?.Dispose();

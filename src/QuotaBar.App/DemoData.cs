@@ -1,4 +1,4 @@
-﻿using QuotaBar.Core.Providers;
+using QuotaBar.Core.Providers;
 
 namespace QuotaBar.App;
 
@@ -52,7 +52,7 @@ public static class DemoData
             },
         };
 
-        return new UsageReport
+        var report = new UsageReport
         {
             GeneratedAt = now,
             Providers =
@@ -92,6 +92,9 @@ public static class DemoData
                 },
             },
         };
+        report.Providers.RemoveAll(p => p.ProviderKind == "codex");
+        report.Providers.InsertRange(1, CodexSnapshotMapper.Map(CodexAccountsPage.DemoState(), now));
+        return report;
     }
     /// <summary>Plausible history for the demo charts: usage grows in bursts during the day and drops at each reset.</summary>
     public static CostSummary Cost()

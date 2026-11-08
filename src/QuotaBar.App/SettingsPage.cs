@@ -245,7 +245,7 @@ public static class SettingsPage
         Sep();
         var codex = Snap("codex");
         card.Children.Add(AccountRow("codex", "Codex / ChatGPT", StatusText(codex, null), codex,
-            codex?.Status == ProviderStatus.NeedsLogin ? Buttons(Visuals.Chip("codex login", () => PanelWindow.RunInTerminal("codex login"), primary: true)) : null,
+            Buttons(Visuals.Chip(L.T("Manage accounts", "Hesapları yönet"), () => panel.Navigate("codex-accounts"))),
             "codex"));
 
         // Antigravity (multiple accounts)

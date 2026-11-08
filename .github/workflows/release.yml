@@ -32,6 +32,10 @@ jobs:
           if ("v$v" -ne "${{ github.ref_name }}") { throw "Directory.Build.props has $v, tag is ${{ github.ref_name }}" }
           "VERSION=$v" >> $env:GITHUB_ENV
 
+      - name: Prepare pinned account engine
+        shell: pwsh
+        run: ./tools/prepare-switcher-runtime.ps1
+
       - name: Tests
         run: dotnet test tests/QuotaBar.Tests -c Release
 

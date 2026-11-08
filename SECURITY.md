@@ -5,8 +5,8 @@ Windows AI Quota Bar reads the logins of your AI tools in order to show their us
 ## Summary
 
 - **No server of its own, no telemetry, no analytics.** The app only talks to the providers' own APIs and to GitHub for updates.
-- **Read-mostly.** It reads the logins your tools already keep on this PC. It writes to another tool's file in only two cases, both listed below.
-- **Encrypted storage.** Anything it keeps is encrypted with Windows DPAPI for your Windows user.
+- **Codex account management.** Original SwitcherCore handles browser login, profile credentials, usage and confirmed account switching. A confirmed switch forcibly closes Codex Desktop and its descendants before replacing the active login, then reopens Desktop. Independent CLI sessions remain running.
+- **Storage protection.** Codex credentials are ordinary local `auth.json` files with current-user-only Windows ACLs, matching upstream Account Switcher. Other provider secrets use DPAPI; usage and ordinary preferences are not encrypted.
 - **Signed updates.** Installers are signed. The app installs an update only if the signature matches a public key compiled into the app.
 - **Your AI assistant can only read by default.** The MCP server is read-only unless you turn on account switching.
 
@@ -15,7 +15,7 @@ Windows AI Quota Bar reads the logins of your AI tools in order to show their us
 | Provider | Reads | Writes | Sent to |
 |---|---|---|---|
 | Claude | The claude.ai session from the sign-in window inside the app, or the Claude Code CLI login (`~/.claude/.credentials.json`) | Claude Code's file, **only** when its token has expired and must be refreshed (see below) | `claude.ai`, `api.anthropic.com`, `console.anthropic.com` |
-| Codex / ChatGPT | `~/.codex/auth.json` (from `codex login`) | Same file, **only** when its token has expired and must be refreshed (see below) | `chatgpt.com`, `auth.openai.com` |
+| Codex / ChatGPT | Active `CODEX_HOME/auth.json` (default `~/.codex`) and saved Switcher profiles | Original engine synchronizes saved profiles; confirmed switching atomically replaces the active login; installed Codex handles profile token refresh | Installed Codex app-server communicates with OpenAI services, including `chatgpt.com` and `auth.openai.com` |
 | Google Antigravity | The `agy` login in Windows Credential Manager (`gemini:antigravity`) | That entry, **only** when *you* click **Switch** or **Add account** | `cloudcode-pa.googleapis.com`, `oauth2.googleapis.com` |
 | OpenCode Go | Keys saved by OpenCode (`~/.local/share/opencode/opencode.db`), read-only | Nothing | `opencode.ai` |
 | API-key providers | Keys you paste into Settings | Nothing outside the app | That provider's API only (`openrouter.ai`, `api.github.com`, `api.z.ai` / `open.bigmodel.cn`, `api.kimi.com`, `api.minimax.io` / `api.minimaxi.com`, `api.deepseek.com`, `api.moonshot.ai` / `api.moonshot.cn`) |
@@ -25,9 +25,9 @@ Windows AI Quota Bar reads the logins of your AI tools in order to show their us
 
 Other links in the app (dashboards, status pages) open in your browser. The app does not fetch them.
 
-### Token refresh for Codex and Claude Code
+### Token refresh for Claude Code
 
-Access tokens expire. When the Codex CLI or Claude Code token is rejected, the app refreshes it the same way the CLI would, and writes the result back so the CLI keeps working. It does this conservatively:
+When the Claude Code token is rejected, Quota Bar refreshes it and writes it back conservatively:
 
 1. It takes a lock, so the app and `qb.exe` never refresh at the same time.
 2. It re-reads the file. If the CLI has already refreshed the token, the app uses the CLI's token and refreshes nothing.
@@ -46,7 +46,9 @@ To refresh Antigravity tokens, the app uses the OAuth client of the Antigravity 
 
 ## What it stores
 
-Everything lives under `%LOCALAPPDATA%\QuotaBar`:
+Quota Bar's own data lives under `%LOCALAPPDATA%\QuotaBar`:
+
+The table below describes Quota Bar's own data. Codex additionally uses the existing `%LOCALAPPDATA%\Codex Account Switcher` directory (or `CODEX_SWITCHER_DATA_HOME`): `accounts.json`, `settings.json`, `usage-cache.json`, optional reset logs and `accounts\<uuid>\auth.json`. These files are protected with current-user-only ACLs, not DPAPI encryption. Symbolic links/junctions in credential paths are rejected. The integration acquires upstream's named instance mutex to prevent simultaneous standalone and Quota Bar writers. Removing Quota Bar's data folder does not remove these shared account profiles.
 
 | File | Content | Protection |
 |---|---|---|
@@ -59,7 +61,7 @@ Everything lives under `%LOCALAPPDATA%\QuotaBar`:
 | `cost-cache.json` | Daily token and cost totals per model, how far each log was read, response ids already counted (kept 95 days) | Plain text |
 | `webview\` | The embedded browser profile used for claude.ai | Like a browser profile |
 
-To erase everything, uninstall and answer **Yes** when the uninstaller asks whether to delete your data. You can also delete the folder yourself.
+To erase Quota Bar's own data, uninstall and answer **Yes** when the uninstaller asks whether to delete your data. The shared Codex Account Switcher profiles are retained separately; Quota Bar's uninstaller does not erase that shared store.
 
 ## Updates
 
